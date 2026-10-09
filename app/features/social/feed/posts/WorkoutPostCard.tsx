@@ -1,7 +1,7 @@
 // app/features/social/feed/posts/WorkoutPostCard.tsx
 
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, ViewStyle } from "react-native";
+import { Pressable, View, Text, StyleSheet, ViewStyle } from "react-native";
 import { useAppTheme } from "@/lib/useAppTheme";
 import type { FeedRow } from "../types";
 import { UserMetaRow } from "../components/UserMetaRow";
@@ -15,6 +15,7 @@ type Props = {
   // ✅ make optional so modal can reuse without wiring actions
   onToggleLike?: (postId: string) => void;
   onOpenComments?: (post: FeedRow) => void;
+  onOpenPost?: (post: FeedRow) => void;
 
   // ✅ chrome toggles for modal reuse
   showHeader?: boolean; // default true
@@ -33,6 +34,7 @@ export function WorkoutPostCard({
   item,
   onToggleLike,
   onOpenComments,
+  onOpenPost,
   showHeader = true,
   showActions = true,
   containerStyle,
@@ -156,9 +158,8 @@ export function WorkoutPostCard({
   // ✅ local assets key used by WorkoutCover resolver
   const imageKey = ws?.workout_image_key ?? null;
 
-  return (
-    <View style={[styles.card, containerStyle]}>
-      {/* TOP META */}
+  const postContent = (
+    <>
       {showHeader ? (
         <View style={styles.headerPad}>
           <UserMetaRow
@@ -210,6 +211,22 @@ export function WorkoutPostCard({
 
         {!!item.caption && <Text style={styles.caption}>{item.caption}</Text>}
       </View>
+    </>
+  );
+
+  return (
+    <View style={[styles.card, containerStyle]}>
+      {onOpenPost ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open post details"
+          onPress={() => onOpenPost(item)}
+        >
+          {postContent}
+        </Pressable>
+      ) : (
+        postContent
+      )}
 
       {/* ACTIONS */}
       {showActions ? (

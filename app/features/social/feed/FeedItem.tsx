@@ -15,10 +15,24 @@ type Props = {
 
 export function FeedItem({ item, onToggleLike, onOpenComments }: Props) {
   if (item.post_type === "workout") {
-    return <WorkoutPostCard item={item} onToggleLike={onToggleLike} onOpenComments={onOpenComments} />;
+    return (
+      <WorkoutPostCard
+        item={item}
+        onToggleLike={onToggleLike}
+        onOpenComments={onOpenComments}
+        onOpenPost={onOpenComments}
+      />
+    );
   }
   if (item.post_type === "pr") {
-    return <PrPostCard item={item} onToggleLike={onToggleLike} onOpenComments={onOpenComments} />;
+    return (
+      <PrPostCard
+        item={item}
+        onToggleLike={onToggleLike}
+        onOpenComments={onOpenComments}
+        onOpenPost={onOpenComments}
+      />
+    );
   }
   return null;
 }

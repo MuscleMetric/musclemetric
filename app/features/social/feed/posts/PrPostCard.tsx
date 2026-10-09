@@ -1,7 +1,7 @@
 // app/features/social/feed/posts/PrPostCard.tsx
 
 import React, { useMemo } from "react";
-import { View, Text, StyleSheet, ViewStyle } from "react-native";
+import { Pressable, View, Text, StyleSheet, ViewStyle } from "react-native";
 import { useAppTheme } from "@/lib/useAppTheme";
 import type { FeedRow } from "../types";
 import { UserMetaRow } from "../components/UserMetaRow";
@@ -13,6 +13,7 @@ type Props = {
 
   onToggleLike?: (postId: string) => void;
   onOpenComments?: (post: FeedRow) => void;
+  onOpenPost?: (post: FeedRow) => void;
 
   showHeader?: boolean;
   showActions?: boolean;
@@ -72,6 +73,7 @@ export function PrPostCard({
   item,
   onToggleLike,
   onOpenComments,
+  onOpenPost,
   showHeader = true,
   showActions = true,
   containerStyle,
@@ -200,8 +202,8 @@ export function PrPostCard({
       ? `${pr.delta > 0 ? "+" : ""}${fmtInt(pr.delta)} ${unitLabel} over previous best`
       : null;
 
-  return (
-    <View style={[styles.card, containerStyle]}>
+  const postContent = (
+    <>
       {showHeader ? (
         <UserMetaRow
           name={item.user_name ?? "User"}
@@ -234,6 +236,22 @@ export function PrPostCard({
       </View>
 
       {!!item.caption && <Text style={styles.caption}>{item.caption}</Text>}
+    </>
+  );
+
+  return (
+    <View style={[styles.card, containerStyle]}>
+      {onOpenPost ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open post details"
+          onPress={() => onOpenPost(item)}
+        >
+          {postContent}
+        </Pressable>
+      ) : (
+        postContent
+      )}
 
       {showActions ? (
         <View style={styles.actions}>
