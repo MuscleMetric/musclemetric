@@ -25,39 +25,63 @@ jest.mock("@/lib/useAppTheme", () => ({
     },
   }),
 }));
+
+// Retain the visible title so tests can check its derived screen-reader summary.
 jest.mock("@/ui/media/WorkoutCover", () => {
-  const { View } = require("react-native");
-  return { WorkoutCover: () => <View /> };
-});
-jest.mock("@/app/features/social/feed/components/UserMetaRow", () => {
-  const { View } = require("react-native");
-  return { UserMetaRow: () => <View /> };
-});
-jest.mock("@/app/features/social/feed/components/FeedActionsRow", () => {
-  const { View } = require("react-native");
-  return { FeedActionsRow: () => <View /> };
+  const { Text } = require("react-native");
+  return {
+    WorkoutCover: ({ title }: { title?: string | null }) => <Text>{title}</Text>,
+  };
 });
 
-const basePost = {
+// Keep the real FeedActionsRow and its Pressables; only stub native SVG icons.
+jest.mock("lucide-react-native", () => ({
+  ThumbsUp: () => null,
+  MessageCircle: () => null,
+  Share2: () => null,
+}));
+
+const basePost: FeedRow = {
   post_id: "post-1",
+  user_id: "user-1",
   user_name: "Tester",
   user_username: "tester",
-  created_at: "2026-10-08T22:32:29Z",
+  post_type: "workout",
+  visibility: "public",
   caption: "Training update",
-  like_count: 0,
-  comment_count: 0,
+  created_at: "2026-10-08T22:32:29Z",
+  workout_history_id: "history-1",
+  workout_snapshot: {
+    workout_history_id: "history-1",
+    workout_id: "workout-1",
+    workout_title: "Lower A",
+    workout_image_key: null,
+    completed_at: "2026-10-08T22:00:00Z",
+    duration_seconds: 3600,
+    exercises_count: 6,
+    sets_count: 18,
+    total_volume: 8500,
+  },
+  exercise_id: "exercise-1",
+  exercise_name: "Back squat",
+  pr_snapshot: {
+    exercise_name: "Back squat",
+    recent_best_weight: 150,
+    recent_best_reps: 5,
+  },
+  like_count: 7,
+  comment_count: 3,
   viewer_liked: false,
-} as unknown as FeedRow;
+};
+
+function makePost(postType: "workout" | "pr", caption: string | null = "Training update"): FeedRow {
+  return { ...basePost, post_type: postType, caption };
+}
 
 it.each(["workout", "pr"] as const)(
   "opens %s post details when the post content is pressed",
   (postType) => {
-    const post = {
-      ...basePost,
-      post_type: postType,
-      workout_snapshot: {},
-      pr_snapshot: {},
-    } as FeedRow;
+    const post = makePost(postType);
     const onOpenPost = jest.fn();
 
     const screen = render(
@@ -73,6 +97,71 @@ it.each(["workout", "pr"] as const)(
     expect(postButton).toHaveProp("accessibilityHint", "Opens post details");
     fireEvent.press(postButton);
 
+    expect(onOpenPost).toHaveBeenCalledTimes(1);
+    expect(onOpenPost).toHaveBeenCalledWith(post);
+  },
+);
+
+it.each(["workout", "pr"] as const)(
+  "keeps the like and comment controls independent of opening a %s card",
+  (postType) => {
+    const post = makePost(postType);
+    const onToggleLike = jest.fn();
+    const onOpenComments = jest.fn();
+
+    const screen = render(
+      <FeedItem
+        item={post}
+        onToggleLike={onToggleLike}
+        onOpenComments={onOpenComments}
+      />,
+    );
+
+    // Press the rendered counts inside the actual FeedActionsRow Pressables.
+    fireEvent.press(screen.getByText("7"));
+    expect(onToggleLike).toHaveBeenCalledTimes(1);
+    expect(onToggleLike).toHaveBeenCalledWith(post.post_id);
+    expect(onOpenComments).not.toHaveBeenCalled();
+
+    fireEvent.press(screen.getByText("3"));
+    expect(onOpenComments).toHaveBeenCalledTimes(1);
+    expect(onOpenComments).toHaveBeenCalledWith(post);
+    expect(onToggleLike).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(screen.getByRole("button", { name: /Training update/ }));
+    expect(onOpenComments).toHaveBeenCalledTimes(2);
+    expect(onToggleLike).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each(["workout", "pr"] as const)(
+  "preserves the accessible author and %s summary without a caption",
+  (postType) => {
+    const post = makePost(postType, null);
+    const onOpenPost = jest.fn();
+
+    const screen = render(
+      <FeedItem
+        item={post}
+        onToggleLike={jest.fn()}
+        onOpenComments={onOpenPost}
+      />,
+    );
+
+    // No explicit accessibilityLabel should replace the title, author or stats.
+    const postButton = screen.getByRole("button", { name: /Tester/ });
+    expect(postButton.props.accessibilityLabel).toBeUndefined();
+    expect(postButton).toHaveProp("accessibilityHint", "Opens post details");
+
+    if (postType === "workout") {
+      expect(screen.getByRole("button", { name: /LOWER A/ })).toBe(postButton);
+      expect(screen.getByRole("button", { name: /18/ })).toBe(postButton);
+    } else {
+      expect(screen.getByRole("button", { name: /BACK SQUAT/ })).toBe(postButton);
+      expect(screen.getByRole("button", { name: /150/ })).toBe(postButton);
+    }
+
+    fireEvent.press(postButton);
     expect(onOpenPost).toHaveBeenCalledTimes(1);
     expect(onOpenPost).toHaveBeenCalledWith(post);
   },
