@@ -214,6 +214,14 @@ export async function syncPendingWorkouts(): Promise<{
         });
       }
 
+      // Failed saves must remain queued, including when sync stops early.
+      // Retain the original clientSaveId so retries stay idempotent.
+      next.push({
+        ...job,
+        attempts: (job.attempts ?? 0) + 1,
+        lastError: msg,
+      });
+
       // If it smells like auth expired, stop processing remaining jobs.
       if (isAuthProblem(msg)) {
         stoppedBecauseAuth = true;

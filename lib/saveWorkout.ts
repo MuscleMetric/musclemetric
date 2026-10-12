@@ -1,29 +1,11 @@
 // lib/saveWorkout.ts
-import { supabase } from "./supabase";
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
-import * as Sentry from "@sentry/react-native";
 import type { ReviewPayload } from "./sessionStore";
-import { log } from "@/lib/logger";
+import { saveRpcWorkout } from "./workoutSaveRpc";
 import {
   getExerciseLoggingProfile,
   hasCompletedSet,
 } from "@/app/features/workouts/logging/exerciseLoggingProfile";
-
-const DEBUG_SAVE = __DEV__;
-
-function dlog(message: string, data?: Record<string, any>) {
-  if (!DEBUG_SAVE) return;
-  log(`[saveWorkout] ${message}`, data ?? {});
-}
-
-function bc(message: string, data?: Record<string, any>) {
-  Sentry.addBreadcrumb({
-    category: "save_rpc",
-    message,
-    level: "info",
-    data,
-  });
-}
 
 function nowIso() {
   return new Date().toISOString();
@@ -57,7 +39,7 @@ function toNumOrNull(x: any): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-type RpcWorkout = {
+export type RpcWorkout = {
   client_save_id: string;
   workout_id: string | null;
   completed_at: string;
@@ -93,31 +75,6 @@ type RpcWorkout = {
     target_distance?: number;
   }>;
 };
-
-function summarizeRpcPayload(p: RpcWorkout) {
-  const exerciseCount = p.exercise_history.length;
-  const setCount = p.exercise_history.reduce(
-    (acc, ex) => acc + ex.sets.length,
-    0,
-  );
-
-  let approxBytes = 0;
-  try {
-    approxBytes = JSON.stringify(p).length;
-  } catch {}
-
-  return {
-    client_save_id: p.client_save_id,
-    workout_id: p.workout_id,
-    completed_at: p.completed_at,
-    duration_seconds: p.duration_seconds,
-    plan_workout_id: p.plan_workout_id,
-    exerciseCount,
-    setCount,
-    updateCount: p.workout_exercise_updates.length,
-    approxBytes,
-  };
-}
 
 export type SaveFromDraftArgs = {
   clientSaveId: string;
@@ -260,57 +217,7 @@ export function buildRpcPayloadFromDraft(args: SaveFromDraftArgs): RpcWorkout {
 export async function saveCompletedWorkoutFromLiveDraft(
   args: SaveFromDraftArgs,
 ): Promise<SaveResult> {
-  const payload = buildRpcPayloadFromDraft(args);
-  const summary = summarizeRpcPayload(payload);
-
-  dlog("payload summary", summary);
-
-  bc("rpc start", summary);
-
-  try {
-    const { data, error } = await supabase.rpc("save_completed_workout_v1", {
-      p_workout: payload,
-    });
-
-    if (error) {
-      bc("rpc error", {
-        ...summary,
-        code: (error as any).code,
-        details: (error as any).details,
-        hint: (error as any).hint,
-        message: error.message,
-      });
-
-      Sentry.captureException(error, {
-        tags: { area: "save_rpc", fn: "save_completed_workout_v1" },
-        extra: {
-          ...summary,
-          code: (error as any).code,
-          details: (error as any).details,
-          hint: (error as any).hint,
-          message: error.message,
-        },
-      });
-
-      throw new Error(error.message);
-    }
-
-    bc("rpc success", { ...summary, workoutHistoryId: String(data) });
-    dlog("rpc success", { workoutHistoryId: String(data) });
-
-    return { workoutHistoryId: String(data) };
-  } catch (e: any) {
-    bc("rpc exception", { ...summary, message: String(e?.message ?? e) });
-
-    if (!(e && (e as any).name === "PostgrestError")) {
-      Sentry.captureException(e, {
-        tags: { area: "save_rpc", stage: "unexpected" },
-        extra: summary,
-      });
-    }
-
-    throw e;
-  }
+  return saveRpcWorkout(buildRpcPayloadFromDraft(args), "live");
 }
 
 export type SaveFromReviewArgs = {
@@ -461,52 +368,5 @@ export function buildRpcPayloadFromReview(
 export async function saveCompletedWorkoutFromReviewPayload(
   args: SaveFromReviewArgs,
 ): Promise<SaveResult> {
-  const payload = buildRpcPayloadFromReview(args);
-  const summary = summarizeRpcPayload(payload);
-
-  dlog("review payload summary", summary);
-  bc("rpc start", summary);
-
-  try {
-    const { data, error } = await supabase.rpc("save_completed_workout_v1", {
-      p_workout: payload,
-    });
-
-    if (error) {
-      bc("rpc error", {
-        ...summary,
-        code: (error as any).code,
-        details: (error as any).details,
-        hint: (error as any).hint,
-        message: error.message,
-      });
-
-      Sentry.captureException(error, {
-        tags: { area: "save_rpc", fn: "save_completed_workout_v1" },
-        extra: {
-          ...summary,
-          code: (error as any).code,
-          details: (error as any).details,
-          hint: (error as any).hint,
-          message: error.message,
-        },
-      });
-
-      throw new Error(error.message);
-    }
-
-    bc("rpc success", { ...summary, workoutHistoryId: String(data) });
-    return { workoutHistoryId: String(data) };
-  } catch (e: any) {
-    bc("rpc exception", { ...summary, message: String(e?.message ?? e) });
-
-    if (!(e && (e as any).name === "PostgrestError")) {
-      Sentry.captureException(e, {
-        tags: { area: "save_rpc", stage: "unexpected" },
-        extra: summary,
-      });
-    }
-
-    throw e;
-  }
+  return saveRpcWorkout(buildRpcPayloadFromReview(args), "review");
 }
