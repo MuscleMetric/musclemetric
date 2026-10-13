@@ -35,7 +35,7 @@ import {
 } from "@/lib/saveWorkout";
 import { clearAllMmLiveDraftKeysForUser } from "../live/persist/mmLocal";
 import { pauseLivePersist } from "../live/persist/persistControl";
-import { liveWorkoutClientSaveId } from "@/lib/workoutSaveIdentity";
+import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner } from "@/lib/workoutSaveIdentity";
 
 type Params = { workoutId?: string; planWorkoutId?: string };
 
@@ -174,6 +174,9 @@ export default function ReviewWorkoutScreen() {
               // Persisted draft UUID doubles as the RPC idempotency key.
               // Retries after app/screen restart must use the same value.
               const clientSaveId = liveWorkoutClientSaveId(draft, uid);
+              // The alert can remain open while a user signs out or signs in.
+              // Check the current session at the moment Save is confirmed.
+              await assertCurrentWorkoutOwner(draft.userId);
               const durationSeconds = durationSecondsFromDraft(draft);
               const completedAt = new Date();
 
