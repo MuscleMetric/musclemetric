@@ -234,3 +234,29 @@ it("does not overwrite an invalid or corrupted queue", async () => {
   expect(storage.get(keyFor("user-a"))).toBe("{invalid");
   expect(AsyncStorage.setItem).not.toHaveBeenCalled();
 });
+
+
+it("sends original queue owner and retains jobs when account flips during RPC", async () => {
+  (saveCompletedWorkoutFromReviewPayload as jest.Mock).mockImplementationOnce(
+    async (args) => {
+      expect(args.ownerUserId).toBe("user-a");
+      // A sign-in as B occurs after the queue's local auth check but before
+      // the database checks the JWT that comes with the upload.
+      user = "user-b";
+      throw new Error("workout_owner_mismatch");
+    },
+  );
+
+  expect(await syncPendingWorkouts()).toEqual({
+    synced: 0, remaining: 2, stoppedBecauseAuth: true,
+  });
+  expect(jobs("user-a")[0]).toEqual(expect.objectContaining({
+    ownerUserId: "user-a",
+    clientSaveId: "save-1",
+    attempts: 1,
+    lastError: "workout_owner_mismatch",
+  }));
+  expect(jobs("user-a")[1]).toEqual(job("save-2"));
+  expect(jobs("user-b")).toEqual([]);
+  expect(saveCompletedWorkoutFromReviewPayload).toHaveBeenCalledTimes(1);
+});
