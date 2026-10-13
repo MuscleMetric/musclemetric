@@ -1,4 +1,5 @@
-// lib/pendingWorkoutSync.ts
+// Pending saves from the legacy review flow. The current live-workout screen
+// saves directly and does not enqueue here.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "./supabase";
 import { saveCompletedWorkoutFromReviewPayload } from "./saveWorkout";
@@ -15,17 +16,20 @@ function bc(message: string, data?: Record<string, any>) {
   });
 }
 
-const KEY = "mm_pending_workout_saves_v1";
+// Unowned jobs written by old builds cannot be attributed safely. Preserve
+// this legacy key without automatically uploading or deleting its contents.
+const LEGACY_KEY = "mm_pending_workout_saves_v1";
+const USER_QUEUE_PREFIX = "mm_pending_workout_saves_v2:";
+const userQueueKey = (userId: string) => `${USER_QUEUE_PREFIX}${userId}`;
 
 export type PendingWorkoutJob = {
-  clientSaveId: string; // uuid string
+  ownerUserId: string;
+  clientSaveId: string;
   createdAtIso: string;
-
   payload: ReviewPayload;
   totalDurationSec: number;
   completedAtIso: string;
   planWorkoutIdToComplete?: string | null;
-
   attempts: number;
   lastError?: string | null;
 };
@@ -34,7 +38,7 @@ type Listener = (count: number) => void;
 const listeners = new Set<Listener>();
 
 function notify(count: number) {
-  listeners.forEach((l) => l(count));
+  listeners.forEach((listener) => listener(count));
 }
 
 export function subscribePendingCount(fn: Listener) {
@@ -42,26 +46,59 @@ export function subscribePendingCount(fn: Listener) {
   return () => listeners.delete(fn);
 }
 
-async function readQueue(): Promise<PendingWorkoutJob[]> {
-  const raw = await AsyncStorage.getItem(KEY);
-  if (!raw) return [];
+// Serialize queue read-modify-write operations, including the sync pass.
+// Otherwise a new enqueue while a save is in flight can be overwritten by the
+// sync's final write. A rejected operation must not poison future operations.
+let queueTail: Promise<void> = Promise.resolve();
+
+async function withQueueLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = queueTail;
+  let release!: () => void;
+  queueTail = new Promise<void>((resolve) => { release = resolve; });
+  await previous;
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as PendingWorkoutJob[]) : [];
-  } catch {
-    // If storage got corrupted, don't crash the app
-    return [];
+    return await operation();
+  } finally {
+    release();
   }
 }
 
-async function writeQueue(q: PendingWorkoutJob[]) {
-  await AsyncStorage.setItem(KEY, JSON.stringify(q));
-  notify(q.length);
+async function readQueue(key: string): Promise<PendingWorkoutJob[]> {
+  const raw = await AsyncStorage.getItem(key);
+  if (!raw) return [];
+
+  // Do not silently erase a corrupted queue by replacing it with [].
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) {
+    throw new Error("Invalid stored workout save queue");
+  }
+  return parsed as PendingWorkoutJob[];
+}
+
+async function writeQueue(userId: string, jobs: PendingWorkoutJob[]) {
+  await AsyncStorage.setItem(userQueueKey(userId), JSON.stringify(jobs));
+  notify(jobs.length);
+}
+
+async function currentUserId(): Promise<string | null> {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) return null;
+  return data.session?.user?.id ?? null;
 }
 
 export async function getPendingCount(): Promise<number> {
-  const q = await readQueue();
-  return q.length;
+  const userId = await currentUserId();
+  if (!userId) return 0;
+  return (await readQueue(userQueueKey(userId))).filter(
+    (job) => job.ownerUserId === userId,
+  ).length;
+}
+
+// For support/recovery tooling only. Legacy jobs are left untouched because
+// they contain no owner ID; do not infer an owner from the currently signed-in user.
+export async function getLegacyPendingCount(): Promise<number> {
+  const jobs = await readQueue(LEGACY_KEY);
+  return jobs.length;
 }
 
 export async function enqueuePendingWorkout(input: {
@@ -70,35 +107,40 @@ export async function enqueuePendingWorkout(input: {
   completedAt: Date;
   planWorkoutIdToComplete?: string;
 }): Promise<PendingWorkoutJob> {
-  const job: PendingWorkoutJob = {
-    clientSaveId: uuidv4(),
-    createdAtIso: new Date().toISOString(),
-    payload: input.payload,
-    totalDurationSec: input.totalDurationSec,
-    completedAtIso: input.completedAt.toISOString(),
-    planWorkoutIdToComplete: input.planWorkoutIdToComplete ?? null,
-    attempts: 0,
-    lastError: null,
-  };
+  return withQueueLock(async () => {
+    const ownerUserId = await currentUserId();
+    if (!ownerUserId) {
+      throw new Error("Cannot queue a workout without a signed-in account");
+    }
 
-  bc("enqueue start", {
-    clientSaveId: job.clientSaveId,
-    totalDurationSec: job.totalDurationSec,
-    planWorkoutIdToComplete: job.planWorkoutIdToComplete,
-    workoutId: input.payload?.workout?.id,
-    title: input.payload?.workout?.title,
+    const job: PendingWorkoutJob = {
+      ownerUserId,
+      clientSaveId: uuidv4(),
+      createdAtIso: new Date().toISOString(),
+      payload: input.payload,
+      totalDurationSec: input.totalDurationSec,
+      completedAtIso: input.completedAt.toISOString(),
+      planWorkoutIdToComplete: input.planWorkoutIdToComplete ?? null,
+      attempts: 0,
+      lastError: null,
+    };
+
+    bc("enqueue start", {
+      clientSaveId: job.clientSaveId,
+      ownerUserId,
+      workoutId: input.payload?.workout?.id,
+    });
+
+    const queue = await readQueue(userQueueKey(ownerUserId));
+    queue.push(job);
+    await writeQueue(ownerUserId, queue);
+
+    bc("enqueue success", {
+      clientSaveId: job.clientSaveId,
+      queueLength: queue.length,
+    });
+    return job;
   });
-
-  const q = await readQueue();
-  q.push(job);
-  await writeQueue(q);
-
-  bc("enqueue success", {
-    clientSaveId: job.clientSaveId,
-    queueLength: q.length,
-  });
-
-  return job;
 }
 
 function isAuthProblem(msg: string) {
@@ -123,127 +165,107 @@ function isNetworkProblem(msg: string) {
   );
 }
 
-/**
- * Tries to upload pending jobs in FIFO order.
- * Returns a summary so UI can show "synced X" etc if you want.
- */
 export async function syncPendingWorkouts(): Promise<{
   synced: number;
   remaining: number;
   stoppedBecauseAuth: boolean;
 }> {
-  // quick auth check – if no session, don't thrash the network
-  bc("sync start");
+  return withQueueLock(async () => {
+    bc("sync start");
+    const userId = await currentUserId();
+    if (!userId) {
+      bc("sync stopped: no session");
+      return { synced: 0, remaining: 0, stoppedBecauseAuth: true };
+    }
 
-  const { data } = await supabase.auth.getSession();
-  const sess = data.session;
+    const queue = await readQueue(userQueueKey(userId));
+    if (!queue.length) {
+      return { synced: 0, remaining: 0, stoppedBecauseAuth: false };
+    }
 
-  bc("session checked", {
-    authed: !!sess?.user?.id,
-  });
+    let synced = 0;
+    let stoppedBecauseAuth = false;
+    const remaining: PendingWorkoutJob[] = [];
 
-  if (!sess?.user?.id) {
-    const q = await readQueue();
-    bc("sync stopped: no session", { remaining: q.length });
-    return { synced: 0, remaining: q.length, stoppedBecauseAuth: true };
-  }
+    for (let i = 0; i < queue.length; i++) {
+      const job = queue[i];
 
-  let q = await readQueue();
-  bc("queue loaded", { count: q.length });
-
-  if (!q.length) return { synced: 0, remaining: 0, stoppedBecauseAuth: false };
-
-  let synced = 0;
-  let stoppedBecauseAuth = false;
-
-  // Process sequentially: simplest + safest
-  const next: PendingWorkoutJob[] = [];
-
-  for (const job of q) {
-    try {
-      // Attempt server save using *current* authed user id
-      const uid = sess.user.id;
-
-      bc("job start", {
-        clientSaveId: job.clientSaveId,
-        attempts: job.attempts,
-        workoutId: job.payload?.workout?.id,
-        planWorkoutIdToComplete: job.planWorkoutIdToComplete,
-      });
-
-      await saveCompletedWorkoutFromReviewPayload({
-        clientSaveId: job.clientSaveId,
-        payload: job.payload,
-        totalDurationSec: job.totalDurationSec,
-        completedAt: new Date(job.completedAtIso),
-        planWorkoutIdToComplete: job.planWorkoutIdToComplete ?? undefined,
-      });
-
-      bc("job success", { clientSaveId: job.clientSaveId });
-
-      synced += 1;
-      // drop the job (do not add to next[])
-    } catch (e: any) {
-      const msg = String(e?.message ?? "unknown");
-
-      // record failure and keep it
-      bc("job failed", {
-        clientSaveId: job.clientSaveId,
-        attemptsNext: job.attempts + 1,
-        lastError: msg,
-        authProblem: isAuthProblem(msg),
-        networkProblem: isNetworkProblem(msg),
-      });
-
-      // ✅ Capture exception ONLY on first few attempts to avoid spamming
-      if ((job.attempts ?? 0) < 2) {
-        Sentry.captureException(e, {
-          tags: {
-            area: "pending_sync",
-            stage: "saveCompletedWorkout",
-            auth_problem: String(isAuthProblem(msg)),
-            network_problem: String(isNetworkProblem(msg)),
-          },
-          extra: {
-            clientSaveId: job.clientSaveId,
-            attempts: job.attempts,
-            lastError: msg,
-            workoutId: job.payload?.workout?.id,
-            planWorkoutIdToComplete: job.planWorkoutIdToComplete,
-          },
-        });
+      // Defense in depth even if an old/malformed job lands in the wrong key.
+      // Never guess ownership for jobs without an owner.
+      if (job.ownerUserId !== userId) {
+        remaining.push(job);
+        continue;
       }
 
-      // Failed saves must remain queued, including when sync stops early.
-      // Retain the original clientSaveId so retries stay idempotent.
-      next.push({
-        ...job,
-        attempts: (job.attempts ?? 0) + 1,
-        lastError: msg,
-      });
-
-      // If it smells like auth expired, stop processing remaining jobs.
-      if (isAuthProblem(msg)) {
+      // Recheck the session before each upload: logout or account switching
+      // during a multi-job sync must not cause later jobs to use another user.
+      if ((await currentUserId()) !== userId) {
         stoppedBecauseAuth = true;
-        bc("sync stopped: auth problem", { clientSaveId: job.clientSaveId });
-
-        // carry the rest forward untouched
-        const idx = q.indexOf(job);
-        for (let j = idx + 1; j < q.length; j++) next.push(q[j]);
+        remaining.push(...queue.slice(i));
         break;
       }
 
-      // Network problems: also stop early to avoid hammering
-      if (isNetworkProblem(msg)) {
-        bc("sync stopped: network problem", { clientSaveId: job.clientSaveId });
-        const idx = q.indexOf(job);
-        for (let j = idx + 1; j < q.length; j++) next.push(q[j]);
-        break;
+      try {
+        bc("job start", {
+          clientSaveId: job.clientSaveId,
+          ownerUserId: job.ownerUserId,
+          attempts: job.attempts,
+        });
+
+        await saveCompletedWorkoutFromReviewPayload({
+          clientSaveId: job.clientSaveId,
+          payload: job.payload,
+          totalDurationSec: job.totalDurationSec,
+          completedAt: new Date(job.completedAtIso),
+          planWorkoutIdToComplete: job.planWorkoutIdToComplete ?? undefined,
+        });
+
+        bc("job success", { clientSaveId: job.clientSaveId });
+        synced += 1;
+      } catch (e: any) {
+        const msg = String(e?.message ?? "unknown");
+        const authProblem = isAuthProblem(msg);
+        const networkProblem = isNetworkProblem(msg);
+
+        bc("job failed", {
+          clientSaveId: job.clientSaveId,
+          attemptsNext: job.attempts + 1,
+          authProblem,
+          networkProblem,
+        });
+
+        if ((job.attempts ?? 0) < 2) {
+          Sentry.captureException(e, {
+            tags: {
+              area: "pending_sync",
+              stage: "saveCompletedWorkout",
+              auth_problem: String(authProblem),
+              network_problem: String(networkProblem),
+            },
+            extra: {
+              clientSaveId: job.clientSaveId,
+              attempts: job.attempts,
+              lastError: msg,
+            },
+          });
+        }
+
+        remaining.push({
+          ...job,
+          attempts: (job.attempts ?? 0) + 1,
+          lastError: msg,
+        });
+
+        if (authProblem || networkProblem) {
+          stoppedBecauseAuth = authProblem;
+          remaining.push(...queue.slice(i + 1));
+          break;
+        }
       }
     }
-  }
 
-  await writeQueue(next);
-  bc("sync end", { synced, remaining: next.length, stoppedBecauseAuth });
-  return { synced, remaining: next.length, stoppedBecauseAuth };
+    await writeQueue(userId, remaining);
+    bc("sync end", { synced, remaining: remaining.length, stoppedBecauseAuth });
+    return { synced, remaining: remaining.length, stoppedBecauseAuth };
+  });
 }
