@@ -217,11 +217,12 @@ export function buildRpcPayloadFromDraft(args: SaveFromDraftArgs): RpcWorkout {
 export async function saveCompletedWorkoutFromLiveDraft(
   args: SaveFromDraftArgs,
 ): Promise<SaveResult> {
-  return saveRpcWorkout(buildRpcPayloadFromDraft(args), "live");
+  return saveRpcWorkout(buildRpcPayloadFromDraft(args), "live", args.draft.userId);
 }
 
 export type SaveFromReviewArgs = {
   clientSaveId: string;
+  ownerUserId: string;
   payload: ReviewPayload;
   completedAt?: Date;
   totalDurationSec: number;
@@ -368,5 +369,5 @@ export function buildRpcPayloadFromReview(
 export async function saveCompletedWorkoutFromReviewPayload(
   args: SaveFromReviewArgs,
 ): Promise<SaveResult> {
-  return saveRpcWorkout(buildRpcPayloadFromReview(args), "review");
+  return saveRpcWorkout(buildRpcPayloadFromReview(args), "review", args.ownerUserId);
 }
