@@ -1,4 +1,5 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
+import { supabase } from "@/lib/supabase";
 
 // The live draft is persisted locally and on the server with a stable UUID.
 // Using the draft ID as client_save_id makes ambiguous network retries
@@ -21,4 +22,20 @@ export function liveWorkoutClientSaveId(
   }
 
   return draft.draftId;
+}
+
+/**
+ * Called at confirmation time (not when opening the Alert). Auth may have
+ * changed while the dialog was visible. This is only an early client guard:
+ * save_completed_workout_v2 independently compares the actual RPC JWT to
+ * the original draft/queued-job owner in the same database request.
+ */
+export async function assertCurrentWorkoutOwner(expectedUserId: string): Promise<void> {
+  if (!expectedUserId) {
+    throw new Error("Workout owner is missing. Please reopen the workout.");
+  }
+  const { data, error } = await supabase.auth.getUser();
+  if (error || data.user?.id !== expectedUserId) {
+    throw new Error("Your account changed. Please reopen your workout before saving.");
+  }
 }
