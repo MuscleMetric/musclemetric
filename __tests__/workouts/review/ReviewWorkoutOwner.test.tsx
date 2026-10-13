@@ -8,6 +8,10 @@ import { bootLiveDraft } from "@/app/features/workouts/live/boot/bootLiveDraft";
 import { saveCompletedWorkoutFromLiveDraft } from "@/lib/saveWorkout";
 import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders/buildEmptyQuickStartDraft";
 
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getAllKeys: jest.fn(), multiGet: jest.fn(), getItem: jest.fn(), setItem: jest.fn() },
+}));
 jest.mock("@/lib/supabase", () => ({
   supabase: { auth: { getUser: jest.fn() } },
 }));
