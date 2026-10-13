@@ -95,6 +95,7 @@ const liveArgs = () => ({
 });
 const reviewArgs = () => ({
   clientSaveId: "client-save-1",
+  ownerUserId: "user-1",
   payload: legacyReview(),
   completedAt,
   totalDurationSec: 3600,
@@ -115,7 +116,8 @@ it("saves both workout entry points through the same RPC with the same data cont
 
   expect(supabase.rpc).toHaveBeenCalledTimes(2);
   for (const call of (supabase.rpc as jest.Mock).mock.calls) {
-    expect(call[0]).toBe("save_completed_workout_v1");
+    expect(call[0]).toBe("save_completed_workout_v2");
+    expect(call[1].p_expected_user_id).toBe("user-1");
     expect(call[1].p_workout).toEqual(expect.objectContaining({
       client_save_id: "client-save-1",
       workout_id: "workout-1",
@@ -145,7 +147,7 @@ it.each(["live", "review"] as const)(
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).toHaveBeenCalledWith(
-      dbError, expect.objectContaining({ tags: { area: "save_rpc", fn: "save_completed_workout_v1" } }),
+      dbError, expect.objectContaining({ tags: { area: "save_rpc", fn: "save_completed_workout_v2" } }),
     );
   },
 );
@@ -171,6 +173,8 @@ it("keeps the same client_save_id when a live workout save is retried", async ()
   expect(supabase.rpc).toHaveBeenCalledTimes(2);
   expect((supabase.rpc as jest.Mock).mock.calls.map((call) => call[1].p_workout.client_save_id))
     .toEqual(["client-save-1", "client-save-1"]);
+  expect((supabase.rpc as jest.Mock).mock.calls.map((call) => call[1].p_expected_user_id))
+    .toEqual(["user-1", "user-1"]);
 });
 
 it("serializes cardio distance and time without adding strength-only fields", () => {
@@ -191,4 +195,32 @@ it("serializes cardio distance and time without adding strength-only fields", ()
     set_number: 1, drop_index: 0, reps: null, weight: null,
     time_seconds: 1800, distance: 5.5, notes: null,
   }]);
+});
+
+it("preserves queued owner's identity even when the request starts under another session", async () => {
+  // The mocked RPC emulates the v2 database contract. Its actual-JWT owner is
+  // user-b, but the queued job originated from user-1. It must be rejected.
+  let requestUserId = "user-1";
+  (supabase.rpc as jest.Mock).mockImplementation(async (name, params) => {
+    expect(name).toBe("save_completed_workout_v2");
+    requestUserId = "user-b"; // account switched just before RPC token attachment
+    expect(params.p_expected_user_id).toBe("user-1");
+    return requestUserId === params.p_expected_user_id
+      ? { data: "saved", error: null }
+      : { data: null, error: { name: "PostgrestError", code: "42501", message: "workout_owner_mismatch" } };
+  });
+
+  await expect(saveCompletedWorkoutFromReviewPayload(reviewArgs()))
+    .rejects.toThrow("workout_owner_mismatch");
+  expect(supabase.rpc).toHaveBeenCalledTimes(1);
+});
+
+it("always passes the persisted draft's user, not a newly signed-in user", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "saved", error: null });
+  const args = liveArgs();
+  await saveCompletedWorkoutFromLiveDraft(args);
+  expect(supabase.rpc).toHaveBeenCalledWith("save_completed_workout_v2", {
+    p_workout: expect.anything(),
+    p_expected_user_id: args.draft.userId,
+  });
 });
