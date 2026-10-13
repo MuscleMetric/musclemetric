@@ -9,6 +9,7 @@ import {
   type PendingWorkoutJob,
 } from "@/lib/pendingWorkoutSync";
 import type { ReviewPayload } from "@/lib/sessionStore";
+import { v4 as uuidv4 } from "uuid";
 
 jest.mock("@react-native-async-storage/async-storage", () => ({
   __esModule: true,
@@ -55,6 +56,7 @@ function jobs(uid: string): PendingWorkoutJob[] {
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (uuidv4 as jest.Mock).mockReturnValue("new-id");
   user = "user-a";
   storage = new Map<string, string>([
     [keyFor("user-a"), JSON.stringify([job("save-1"), job("save-2")])],
