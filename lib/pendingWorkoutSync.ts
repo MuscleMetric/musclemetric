@@ -197,8 +197,8 @@ export async function syncPendingWorkouts(): Promise<{
         continue;
       }
 
-      // Recheck the session before each upload: logout or account switching
-      // during a multi-job sync must not cause later jobs to use another user.
+      // Fast client-side check. The v2 database RPC performs the authoritative
+      // account check using the JWT attached to the actual upload request.
       if ((await currentUserId()) !== userId) {
         stoppedBecauseAuth = true;
         remaining.push(...queue.slice(i));
@@ -214,6 +214,7 @@ export async function syncPendingWorkouts(): Promise<{
 
         await saveCompletedWorkoutFromReviewPayload({
           clientSaveId: job.clientSaveId,
+          ownerUserId: job.ownerUserId,
           payload: job.payload,
           totalDurationSec: job.totalDurationSec,
           completedAt: new Date(job.completedAtIso),
