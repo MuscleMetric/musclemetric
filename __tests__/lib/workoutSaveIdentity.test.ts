@@ -1,4 +1,8 @@
-import { liveWorkoutClientSaveId } from "@/lib/workoutSaveIdentity";
+import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner } from "@/lib/workoutSaveIdentity";
+import { supabase } from "@/lib/supabase";
+
+jest.mock("@/lib/supabase", () => ({ supabase: { auth: { getUser: jest.fn() } } }));
+
 import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders/buildEmptyQuickStartDraft";
 import { buildDraftFromBootstrap } from "@/app/features/workouts/hooks/buildDraft";
 import type { WorkoutLoadPayload } from "@/app/features/workouts/live/state/types";
@@ -57,4 +61,36 @@ it("fails closed rather than inventing a new id for a damaged draft", () => {
   const draft = buildEmptyQuickStartDraft({ userId });
   const invalid = { ...draft, draftId: "" };
   expect(() => liveWorkoutClientSaveId(invalid, userId)).toThrow(/valid save ID/);
+});
+
+
+it("allows save confirmation only when fresh authenticated user owns the draft", async () => {
+  (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+    data: { user: { id: userId } }, error: null,
+  });
+  await expect(assertCurrentWorkoutOwner(userId)).resolves.toBeUndefined();
+  expect(supabase.auth.getUser).toHaveBeenCalledTimes(1);
+});
+
+it("blocks confirmation when account changed while save Alert was open", async () => {
+  // The alert was opened with user A. The real authentication state is B
+  // by the time the user presses its Save button.
+  (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+    data: { user: { id: "person-b" } }, error: null,
+  });
+  await expect(assertCurrentWorkoutOwner(userId)).rejects.toThrow(/account changed/);
+});
+
+it("blocks confirmation if user signed out while the Alert was open", async () => {
+  (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+    data: { user: null }, error: null,
+  });
+  await expect(assertCurrentWorkoutOwner(userId)).rejects.toThrow(/account changed/);
+});
+
+it("blocks confirmation if authentication verification fails", async () => {
+  (supabase.auth.getUser as jest.Mock).mockResolvedValue({
+    data: { user: null }, error: { message: "Failed to fetch user" },
+  });
+  await expect(assertCurrentWorkoutOwner(userId)).rejects.toThrow(/account changed/);
 });
