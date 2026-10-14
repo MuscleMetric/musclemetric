@@ -10,7 +10,7 @@ import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types"
 import type { ReviewPayload } from "@/lib/sessionStore";
 
 jest.mock("@/lib/supabase", () => ({
-  supabase: { rpc: jest.fn() },
+  supabase: { rpc: jest.fn(), from: jest.fn() },
 }));
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
@@ -109,6 +109,14 @@ const reviewArgs = () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+    };
+    return query;
+  });
 });
 
 it("saves both workout entry points through the same RPC with the same data contract", async () => {
@@ -266,4 +274,31 @@ it("preserves PostgREST 42501 error code so retry logic can stop on an auth fail
   await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toMatchObject({
     code: "42501", message: "permission denied",
   });
+});
+
+it("blocks a stale workout already committed by another device before sending RPC", async () => {
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: { id: "existing-history" }, error: null })),
+    };
+    return query;
+  });
+
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow(/already saved/);
+  expect(supabase.rpc).not.toHaveBeenCalled();
+});
+
+it("requires a fresh history check even if a cached local draft was never submitted", async () => {
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: null, error: { message: "offline" } })),
+    };
+    return query;
+  });
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow(/Reconnect/);
+  expect(supabase.rpc).not.toHaveBeenCalled();
 });
