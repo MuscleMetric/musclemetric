@@ -2,7 +2,7 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import type { ReviewPayload } from "./sessionStore";
 import { saveRpcWorkout } from "./workoutSaveRpc";
-import { markLiveDraftCompleted } from "./workoutSaveIdentity";
+import { markLiveDraftCompleted, markLiveDraftSaveAttempt } from "./workoutSaveIdentity";
 import {
   getExerciseLoggingProfile,
   hasCompletedSet,
@@ -218,6 +218,9 @@ export function buildRpcPayloadFromDraft(args: SaveFromDraftArgs): RpcWorkout {
 export async function saveCompletedWorkoutFromLiveDraft(
   args: SaveFromDraftArgs,
 ): Promise<SaveResult> {
+  // Fail before sending if we cannot record an ambiguous in-flight save.
+  // This is what lets ordinary never-submitted drafts resume offline safely.
+  await markLiveDraftSaveAttempt(args.draft.userId, args.draft.draftId);
   const saved = await saveRpcWorkout(buildRpcPayloadFromDraft(args), "live", args.draft.userId);
   // A committed save must never reopen as an editable new session if server
   // cleanup fails. Keep this marker separate from the draft cache.
