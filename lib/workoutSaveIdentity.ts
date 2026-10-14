@@ -86,27 +86,35 @@ export async function isLiveDraftCompleted(
   // Older/invalid IDs could not have been sent through the stable-UUID saver.
   if (!UUID_PATTERN.test(draft.draftId)) return false;
 
-  // Ordinary locally-created, never-submitted drafts can resume offline.
-  // A previously attempted save is ambiguous until history is checked.
-  // Server-sourced drafts always need verification because another device
-  // may have saved them.
-  if (!options?.checkServer &&
-      !(await AsyncStorage.getItem(attemptedDraftKey(userId, draft.draftId)))) {
-    return false;
-  }
+  // Always check when online: a local draft may have originally come from
+  // another device's server cache, then been completed elsewhere.
+  // Only a never-submitted local draft may resume *offline* without a check;
+  // it must be verified again before any upload.
+  const wasAttempted = !!(await AsyncStorage.getItem(
+    attemptedDraftKey(userId, draft.draftId),
+  ));
+  let savedHistoryId: string | null = null;
 
-  const { data, error } = await supabase
-    .from("workout_history")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("client_save_id", draft.draftId)
-    .maybeSingle();
+  try {
+    const { data, error } = await supabase
+      .from("workout_history")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("client_save_id", draft.draftId)
+      .maybeSingle();
 
-  if (error) {
+    if (error) throw error;
+    savedHistoryId = data?.id ?? null;
+  } catch {
+    if (!wasAttempted && !options?.checkServer) {
+      // Reading/editing an unattempted local draft offline is safe. The save
+      // path forces a fresh server check before it can commit anything.
+      return false;
+    }
     throw new Error("Could not verify whether this workout was already saved. Reconnect and try again.");
   }
 
-  if (!data?.id) return false;
+  if (!savedHistoryId) return false;
 
   // The server is authoritative. Persist the result for offline/next boot.
   try {
