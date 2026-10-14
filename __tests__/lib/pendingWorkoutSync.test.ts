@@ -280,3 +280,15 @@ it("stops on request-time owner mismatch without attempting or modifying later j
   }));
   expect(jobs("user-a").slice(1)).toEqual([job("save-2"), job("save-3")]);
 });
+
+it("halts on PostgreSQL 42501 even when the error message is generic", async () => {
+  (saveCompletedWorkoutFromReviewPayload as jest.Mock).mockRejectedValueOnce(
+    Object.assign(new Error("permission denied"), { code: "42501" }),
+  );
+
+  expect(await syncPendingWorkouts()).toEqual({
+    synced: 0, remaining: 2, stoppedBecauseAuth: true,
+  });
+  expect(saveCompletedWorkoutFromReviewPayload).toHaveBeenCalledTimes(1);
+  expect(jobs("user-a")[1]).toEqual(job("save-2"));
+});
