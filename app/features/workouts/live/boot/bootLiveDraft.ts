@@ -36,7 +36,7 @@ export async function bootLiveDraft(args: {
       ? localCandidate
       : null;
   const server =
-    serverCandidate && !(await isLiveDraftCompleted(serverCandidate, userId))
+    serverCandidate && !(await isLiveDraftCompleted(serverCandidate, userId, { checkServer: true }))
       ? serverCandidate
       : null;
 
