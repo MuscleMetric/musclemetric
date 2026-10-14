@@ -226,7 +226,7 @@ export async function syncPendingWorkouts(): Promise<{
         synced += 1;
       } catch (e: any) {
         const msg = String(e?.message ?? "unknown");
-        const authProblem = isAuthProblem(msg);
+        const authProblem = isAuthProblem(msg) || e?.code === "42501";
         const networkProblem = isNetworkProblem(msg);
 
         bc("job failed", {
