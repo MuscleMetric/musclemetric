@@ -286,7 +286,9 @@ it("blocks a stale workout already committed by another device before sending RP
     return query;
   });
 
-  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow(/already saved/);
+  const args = liveArgs();
+  args.draft.draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toThrow(/already saved/);
   expect(supabase.rpc).not.toHaveBeenCalled();
 });
 
@@ -299,6 +301,8 @@ it("requires a fresh history check even if a cached local draft was never submit
     };
     return query;
   });
-  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow(/Reconnect/);
+  const args = liveArgs();
+  args.draft.draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toThrow(/Reconnect/);
   expect(supabase.rpc).not.toHaveBeenCalled();
 });
