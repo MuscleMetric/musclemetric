@@ -1,7 +1,6 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import { supabase } from "@/lib/supabase";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 
 // The live draft is persisted locally and on the server with a stable UUID.
 // Using the draft ID as client_save_id makes ambiguous network retries
