@@ -1,4 +1,4 @@
-import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner, markLiveDraftCompleted, isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
+import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner, markLiveDraftCompleted, markLiveDraftSaveAttempt, isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 
@@ -142,6 +142,8 @@ describe("completed live draft guard", () => {
 
   it("detects a committed workout from the server if the app crashed before writing the marker", async () => {
     const draft = makeDraft();
+    // The app crashed after sending the RPC but before writing the success marker.
+    await markLiveDraftSaveAttempt(userId, draft.draftId);
     serverRows.set(draft.draftId, { id: "saved-history-id" });
     expect(await isLiveDraftCompleted(draft, userId)).toBe(true);
     expect(supabase.from).toHaveBeenCalledWith("workout_history");
@@ -152,6 +154,7 @@ describe("completed live draft guard", () => {
 
   it("does not resume an unverified draft when the history lookup fails", async () => {
     const draft = makeDraft();
+    await markLiveDraftSaveAttempt(userId, draft.draftId);
     (supabase.from as jest.Mock).mockImplementation(() => {
       const query = {
         select: jest.fn(() => query),
@@ -161,6 +164,21 @@ describe("completed live draft guard", () => {
       return query;
     });
     await expect(isLiveDraftCompleted(draft, userId)).rejects.toThrow(/Reconnect/);
+  });
+
+  it("allows a never-submitted local draft to resume without checking the network", async () => {
+    const draft = makeDraft();
+    (supabase.from as jest.Mock).mockImplementation(() => {
+      throw new Error("network offline");
+    });
+    expect(await isLiveDraftCompleted(draft, userId)).toBe(false);
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it("always checks a server-originated draft even without a local attempt marker", async () => {
+    const draft = makeDraft();
+    serverRows.set(draft.draftId, { id: "completed-on-other-device" });
+    expect(await isLiveDraftCompleted(draft, userId, { checkServer: true })).toBe(true);
   });
 
   it("never trusts another account's completion marker", async () => {
