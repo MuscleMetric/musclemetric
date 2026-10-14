@@ -13,6 +13,7 @@ import { router, usePathname } from "expo-router";
 
 import { useAuth } from "@/lib/authContext";
 import { loadLiveDraftForUser } from "@/app/features/workouts/live/persist/local";
+import { isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
 import type { LiveWorkoutDraft } from "../state/types";
 import type { ActiveWorkoutSessionContextValue } from "./types";
 import { timerSecondsFromSnapshot, timerTextFromSeconds } from "./time";
@@ -78,10 +79,18 @@ export function ActiveWorkoutSessionProvider({ children }: Props) {
 
     try {
       const draft = await loadLiveDraftForUser(userId);
-      const nextDraft = toDraft(draft);
+      const nextDraft = draft && !(await isLiveDraftCompleted(draft, userId))
+        ? toDraft(draft)
+        : null;
 
       applyDraftSnapshot(nextDraft);
       setRestoredDraftOnBoot(!!nextDraft);
+      setResumeGateHandled(false);
+    } catch {
+      // Do not present a potentially completed draft when verification fails.
+      // The persisted data is left intact to retry once connected.
+      applyDraftSnapshot(null);
+      setRestoredDraftOnBoot(false);
       setResumeGateHandled(false);
     } finally {
       setBootHydrationComplete(true);
@@ -99,8 +108,13 @@ export function ActiveWorkoutSessionProvider({ children }: Props) {
     setLoading(true);
     try {
       const draft = await loadLiveDraftForUser(userId);
-      const nextDraft = toDraft(draft);
+      const nextDraft = draft && !(await isLiveDraftCompleted(draft, userId))
+        ? toDraft(draft)
+        : null;
       applyDraftSnapshot(nextDraft);
+    } catch {
+      // Fail closed on verification errors; never discard stored workout data.
+      applyDraftSnapshot(null);
     } finally {
       setLoading(false);
     }
