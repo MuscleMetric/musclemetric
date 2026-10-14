@@ -2,6 +2,7 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import type { ReviewPayload } from "./sessionStore";
 import { saveRpcWorkout } from "./workoutSaveRpc";
+import { markLiveDraftCompleted } from "./workoutSaveIdentity";
 import {
   getExerciseLoggingProfile,
   hasCompletedSet,
@@ -217,7 +218,16 @@ export function buildRpcPayloadFromDraft(args: SaveFromDraftArgs): RpcWorkout {
 export async function saveCompletedWorkoutFromLiveDraft(
   args: SaveFromDraftArgs,
 ): Promise<SaveResult> {
-  return saveRpcWorkout(buildRpcPayloadFromDraft(args), "live", args.draft.userId);
+  const saved = await saveRpcWorkout(buildRpcPayloadFromDraft(args), "live", args.draft.userId);
+  // A committed save must never reopen as an editable new session if server
+  // cleanup fails. Keep this marker separate from the draft cache.
+  try {
+    await markLiveDraftCompleted(args.draft.userId, args.draft.draftId);
+  } catch {
+    // The RPC has succeeded: never report a failed workout save here.
+    // Boot verifies client_save_id against workout_history as a fallback.
+  }
+  return saved;
 }
 
 export type SaveFromReviewArgs = {
