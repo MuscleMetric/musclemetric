@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import {
   buildRpcPayloadFromDraft,
@@ -14,6 +15,10 @@ jest.mock("@/lib/supabase", () => ({
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
   captureException: jest.fn(),
+}));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(), setItem: jest.fn() },
 }));
 jest.mock("@/lib/logger", () => ({ log: jest.fn() }));
 
@@ -161,6 +166,26 @@ it("reports unexpected network exceptions without changing their identity", asyn
   expect(Sentry.captureException).toHaveBeenCalledWith(
     error, expect.objectContaining({ tags: { area: "save_rpc", stage: "unexpected" } }),
   );
+});
+
+
+it("writes a durable completion marker before returning a successful live save", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "history-123", error: null });
+
+  expect(await saveCompletedWorkoutFromLiveDraft(liveArgs()))
+    .toEqual({ workoutHistoryId: "history-123" });
+  expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+    "mm:completedLiveDraft:user-1:draft-1", "1",
+  );
+});
+
+it("does not falsely report an already committed save as failed if writing the marker fails", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "history-123", error: null });
+  (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).resolves.toEqual({
+    workoutHistoryId: "history-123",
+  });
 });
 
 it("keeps the same client_save_id when a live workout save is retried", async () => {
