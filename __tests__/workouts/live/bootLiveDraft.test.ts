@@ -33,6 +33,7 @@ import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders
 import { supabase } from "@/lib/supabase";
 import { loadLiveDraftForUser, saveLiveDraftForUser } from "@/app/features/workouts/live/persist/local";
 import { fetchServerDraft } from "@/app/features/workouts/live/persist/server";
+import { isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
 
 jest.mock("@/lib/supabase", () => ({
   supabase: {
@@ -49,11 +50,16 @@ jest.mock("@/app/features/workouts/live/persist/server", () => ({
   fetchServerDraft: jest.fn(),
 }));
 
+jest.mock("@/lib/workoutSaveIdentity", () => ({
+  isLiveDraftCompleted: jest.fn(),
+}));
+
 describe("bootLiveDraft", () => {
   const userId = "user-123";
 
   beforeEach(() => {
     jest.clearAllMocks();
+    (isLiveDraftCompleted as jest.Mock).mockResolvedValue(false);
   });
 
   it("returns server draft when server is newer", async () => {
@@ -91,6 +97,55 @@ describe("bootLiveDraft", () => {
     const result = await bootLiveDraft({ userId, preferServer: true });
 
     expect(result.draftId).toBe("local-draft");
+  });
+
+  it("ignores a stale server draft that has already been committed and creates a fresh session", async () => {
+    const savedServerDraft = {
+      ...buildEmptyQuickStartDraft({ userId }),
+      draftId: "old-completed-draft",
+    };
+    (loadLiveDraftForUser as jest.Mock).mockResolvedValue(null);
+    (fetchServerDraft as jest.Mock).mockResolvedValue(savedServerDraft);
+    (isLiveDraftCompleted as jest.Mock).mockImplementation(
+      async (draft: { draftId: string }) => draft.draftId === "old-completed-draft",
+    );
+
+    const fresh = await bootLiveDraft({ userId, preferServer: true });
+
+    expect(fresh.draftId).not.toBe(savedServerDraft.draftId);
+    expect(fresh.source).toBe("quick_start");
+    expect(saveLiveDraftForUser).toHaveBeenCalledWith(userId, fresh);
+    expect(saveLiveDraftForUser).not.toHaveBeenCalledWith(userId, savedServerDraft);
+  });
+
+  it("uses an unfinished local draft instead of a newer completed server draft", async () => {
+    const localDraft = {
+      ...buildEmptyQuickStartDraft({ userId }),
+      draftId: "unfinished-local",
+      updatedAt: "2026-10-14T09:00:00Z",
+    };
+    const serverDraft = {
+      ...buildEmptyQuickStartDraft({ userId }),
+      draftId: "already-saved-server",
+      updatedAt: "2026-10-14T10:00:00Z",
+    };
+    (loadLiveDraftForUser as jest.Mock).mockResolvedValue(localDraft);
+    (fetchServerDraft as jest.Mock).mockResolvedValue(serverDraft);
+    (isLiveDraftCompleted as jest.Mock).mockImplementation(
+      async (draft: { draftId: string }) => draft.draftId === "already-saved-server",
+    );
+
+    expect(await bootLiveDraft({ userId })).toEqual(localDraft);
+  });
+
+  it("blocks restoring any candidate when saved-state verification is unavailable", async () => {
+    const serverDraft = buildEmptyQuickStartDraft({ userId });
+    (loadLiveDraftForUser as jest.Mock).mockResolvedValue(null);
+    (fetchServerDraft as jest.Mock).mockResolvedValue(serverDraft);
+    (isLiveDraftCompleted as jest.Mock).mockRejectedValue(new Error("Reconnect and try again"));
+
+    await expect(bootLiveDraft({ userId })).rejects.toThrow(/Reconnect/);
+    expect(saveLiveDraftForUser).not.toHaveBeenCalled();
   });
 
   it("bootstraps from RPC when workoutId exists and no saved drafts exist", async () => {
