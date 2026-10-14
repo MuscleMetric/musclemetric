@@ -149,6 +149,7 @@ function isAuthProblem(msg: string) {
     m.includes("jwt") ||
     m.includes("token") ||
     m.includes("auth") ||
+    m.includes("workout_owner_mismatch") ||
     m.includes("not authenticated") ||
     m.includes("session")
   );
