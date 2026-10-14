@@ -166,19 +166,27 @@ describe("completed live draft guard", () => {
     await expect(isLiveDraftCompleted(draft, userId)).rejects.toThrow(/Reconnect/);
   });
 
-  it("allows a never-submitted local draft to resume without checking the network", async () => {
+  it("allows never-submitted local drafts to resume when the online verification fails", async () => {
     const draft = makeDraft();
     (supabase.from as jest.Mock).mockImplementation(() => {
       throw new Error("network offline");
     });
     expect(await isLiveDraftCompleted(draft, userId)).toBe(false);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expect(supabase.from).toHaveBeenCalledWith("workout_history");
   });
 
   it("always checks a server-originated draft even without a local attempt marker", async () => {
     const draft = makeDraft();
     serverRows.set(draft.draftId, { id: "completed-on-other-device" });
     expect(await isLiveDraftCompleted(draft, userId, { checkServer: true })).toBe(true);
+  });
+
+
+  it("also catches a draft previously cached locally from another device's server", async () => {
+    const draft = makeDraft();
+    // No attempt marker exists on this device. Another device has saved it.
+    serverRows.set(draft.draftId, { id: "saved-elsewhere" });
+    expect(await isLiveDraftCompleted(draft, userId)).toBe(true);
   });
 
   it("never trusts another account's completion marker", async () => {
