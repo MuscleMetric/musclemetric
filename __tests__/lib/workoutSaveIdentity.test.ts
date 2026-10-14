@@ -116,7 +116,7 @@ describe("completed live draft guard", () => {
     (supabase.from as jest.Mock).mockImplementation((table: string) => {
       expect(table).toBe("workout_history");
       const filters: Record<string, string> = {};
-      const query = {
+      const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
         select: jest.fn(() => query),
         eq: jest.fn((column: string, value: string) => {
           filters[column] = value;
@@ -156,7 +156,7 @@ describe("completed live draft guard", () => {
     const draft = makeDraft();
     await markLiveDraftSaveAttempt(userId, draft.draftId);
     (supabase.from as jest.Mock).mockImplementation(() => {
-      const query = {
+      const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
         select: jest.fn(() => query),
         eq: jest.fn(() => query),
         maybeSingle: jest.fn(async () => ({ data: null, error: { message: "offline" } })),
