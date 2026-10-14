@@ -181,11 +181,19 @@ it("writes a durable completion marker before returning a successful live save",
 
 it("does not falsely report an already committed save as failed if writing the marker fails", async () => {
   (supabase.rpc as jest.Mock).mockResolvedValue({ data: "history-123", error: null });
-  (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+  (AsyncStorage.setItem as jest.Mock)
+    .mockResolvedValueOnce(undefined) // attempt marker was safely persisted
+    .mockRejectedValueOnce(new Error("disk full")); // completion marker failed
 
   await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).resolves.toEqual({
     workoutHistoryId: "history-123",
   });
+});
+
+it("refuses to send a workout if the pre-RPC attempt marker cannot be written", async () => {
+  (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow("disk full");
+  expect(supabase.rpc).not.toHaveBeenCalled();
 });
 
 it("keeps the same client_save_id when a live workout save is retried", async () => {
