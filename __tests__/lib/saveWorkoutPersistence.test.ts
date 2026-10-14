@@ -249,3 +249,13 @@ it("always passes the persisted draft's user, not a newly signed-in user", async
     p_expected_user_id: args.draft.userId,
   });
 });
+
+it("preserves PostgREST 42501 error code so retry logic can stop on an auth failure", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({
+    data: null,
+    error: { code: "42501", message: "permission denied", details: "", hint: "" },
+  });
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toMatchObject({
+    code: "42501", message: "permission denied",
+  });
+});
