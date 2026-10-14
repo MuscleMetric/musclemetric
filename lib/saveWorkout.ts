@@ -2,7 +2,7 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import type { ReviewPayload } from "./sessionStore";
 import { saveRpcWorkout } from "./workoutSaveRpc";
-import { markLiveDraftCompleted, markLiveDraftSaveAttempt } from "./workoutSaveIdentity";
+import { markLiveDraftCompleted, markLiveDraftSaveAttempt, isLiveDraftCompleted } from "./workoutSaveIdentity";
 import {
   getExerciseLoggingProfile,
   hasCompletedSet,
@@ -218,6 +218,12 @@ export function buildRpcPayloadFromDraft(args: SaveFromDraftArgs): RpcWorkout {
 export async function saveCompletedWorkoutFromLiveDraft(
   args: SaveFromDraftArgs,
 ): Promise<SaveResult> {
+  // A cached draft may have been completed on another device. Check at
+  // confirmation/save time as well as boot so stale edits are never silently
+  // accepted by the idempotency early-return path.
+  if (await isLiveDraftCompleted(args.draft, args.draft.userId, { checkServer: true })) {
+    throw new Error("This workout was already saved. Start a new workout to log additional sets.");
+  }
   // Fail before sending if we cannot record an ambiguous in-flight save.
   // This is what lets ordinary never-submitted drafts resume offline safely.
   await markLiveDraftSaveAttempt(args.draft.userId, args.draft.draftId);
