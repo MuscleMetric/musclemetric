@@ -50,6 +50,14 @@ export async function assertCurrentWorkoutOwner(expectedUserId: string): Promise
 const completedDraftKey = (userId: string, draftId: string) =>
   `mm:completedLiveDraft:${userId}:${draftId}`;
 
+const attemptedDraftKey = (userId: string, draftId: string) =>
+  `mm:attemptedLiveDraftSave:${userId}:${draftId}`;
+
+/** Persist before issuing a save RPC so a crash cannot hide an ambiguous save. */
+export async function markLiveDraftSaveAttempt(userId: string, draftId: string): Promise<void> {
+  await AsyncStorage.setItem(attemptedDraftKey(userId, draftId), "1");
+}
+
 export async function markLiveDraftCompleted(userId: string, draftId: string): Promise<void> {
   await AsyncStorage.setItem(completedDraftKey(userId, draftId), "1");
 }
@@ -65,6 +73,7 @@ export async function markLiveDraftCompleted(userId: string, draftId: string): P
 export async function isLiveDraftCompleted(
   draft: Pick<LiveWorkoutDraft, "draftId" | "userId">,
   userId: string,
+  options?: { checkServer?: boolean },
 ): Promise<boolean> {
   if (!userId || draft.userId !== userId) {
     throw new Error("This workout belongs to another account. Please reopen it.");
@@ -76,6 +85,15 @@ export async function isLiveDraftCompleted(
 
   // Older/invalid IDs could not have been sent through the stable-UUID saver.
   if (!UUID_PATTERN.test(draft.draftId)) return false;
+
+  // Ordinary locally-created, never-submitted drafts can resume offline.
+  // A previously attempted save is ambiguous until history is checked.
+  // Server-sourced drafts always need verification because another device
+  // may have saved them.
+  if (!options?.checkServer &&
+      !(await AsyncStorage.getItem(attemptedDraftKey(userId, draft.draftId)))) {
+    return false;
+  }
 
   const { data, error } = await supabase
     .from("workout_history")
