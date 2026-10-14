@@ -1,5 +1,7 @@
 import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import { supabase } from "@/lib/supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 
 // The live draft is persisted locally and on the server with a stable UUID.
 // Using the draft ID as client_save_id makes ambiguous network retries
@@ -38,4 +40,62 @@ export async function assertCurrentWorkoutOwner(expectedUserId: string): Promise
   if (error || data.user?.id !== expectedUserId) {
     throw new Error("Your account changed. Please reopen your workout before saving.");
   }
+}
+
+/**
+ * Mark an acknowledged live workout as completed *before* attempting cleanup.
+ * The marker is account- and draft-scoped; it must not be removed when a new
+ * workout starts. A failed server draft deletion cannot make the old draft
+ * editable again on this device.
+ */
+const completedDraftKey = (userId: string, draftId: string) =>
+  `mm:completedLiveDraft:${userId}:${draftId}`;
+
+export async function markLiveDraftCompleted(userId: string, draftId: string): Promise<void> {
+  await AsyncStorage.setItem(completedDraftKey(userId, draftId), "1");
+}
+
+/**
+ * Verify that a candidate draft has not already been committed. This server
+ * check covers the small crash window after the RPC commits but before the
+ * device stores the local completion marker.
+ *
+ * On network/auth errors we fail closed rather than silently editing an
+ * already-saved draft and losing any newly entered sets on an idempotent retry.
+ */
+export async function isLiveDraftCompleted(
+  draft: Pick<LiveWorkoutDraft, "draftId" | "userId">,
+  userId: string,
+): Promise<boolean> {
+  if (!userId || draft.userId !== userId) {
+    throw new Error("This workout belongs to another account. Please reopen it.");
+  }
+
+  if (await AsyncStorage.getItem(completedDraftKey(userId, draft.draftId))) {
+    return true;
+  }
+
+  // Older/invalid IDs could not have been sent through the stable-UUID saver.
+  if (!UUID_PATTERN.test(draft.draftId)) return false;
+
+  const { data, error } = await supabase
+    .from("workout_history")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("client_save_id", draft.draftId)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error("Could not verify whether this workout was already saved. Reconnect and try again.");
+  }
+
+  if (!data?.id) return false;
+
+  // The server is authoritative. Persist the result for offline/next boot.
+  try {
+    await markLiveDraftCompleted(userId, draft.draftId);
+  } catch {
+    // Safe to return true; another boot can still verify against history.
+  }
+  return true;
 }
