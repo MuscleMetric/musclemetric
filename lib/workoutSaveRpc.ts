@@ -90,7 +90,9 @@ export async function saveRpcWorkout(
         },
       });
 
-      throw new Error(error.message);
+      const saveError = new Error(error.message) as Error & { code?: string };
+      saveError.code = error.code;
+      throw saveError;
     }
 
     const workoutHistoryId = String(data);
