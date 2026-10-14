@@ -53,8 +53,8 @@ export default function WorkoutsHome() {
   if (error || !data) {
     return (
       <ErrorState
-        title="Couldn’t load Workouts"
-        message={error ?? "Unknown error"}
+        title="Workouts couldn’t load"
+        message="Check your internet connection, then try again. Your saved workouts haven’t been changed."
         onRetry={refetch}
       />
     );
