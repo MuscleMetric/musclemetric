@@ -1,7 +1,12 @@
-import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner } from "@/lib/workoutSaveIdentity";
+import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner, markLiveDraftCompleted, isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 
-jest.mock("@/lib/supabase", () => ({ supabase: { auth: { getUser: jest.fn() } } }));
+jest.mock("@/lib/supabase", () => ({ supabase: { auth: { getUser: jest.fn() }, from: jest.fn() } }));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(), setItem: jest.fn() },
+}));
 
 import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders/buildEmptyQuickStartDraft";
 import { buildDraftFromBootstrap } from "@/app/features/workouts/hooks/buildDraft";
@@ -93,4 +98,74 @@ it("blocks confirmation if authentication verification fails", async () => {
     data: { user: null }, error: { message: "Failed to fetch user" },
   });
   await expect(assertCurrentWorkoutOwner(userId)).rejects.toThrow(/account changed/);
+});
+
+describe("completed live draft guard", () => {
+  let storage: Map<string, string>;
+  let serverRows: Map<string, { id: string }>;
+  const makeDraft = () => buildEmptyQuickStartDraft({ userId });
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    storage = new Map();
+    serverRows = new Map();
+    (AsyncStorage.getItem as jest.Mock).mockImplementation(async (key: string) => storage.get(key) ?? null);
+    (AsyncStorage.setItem as jest.Mock).mockImplementation(async (key: string, value: string) => {
+      storage.set(key, value);
+    });
+    (supabase.from as jest.Mock).mockImplementation((table: string) => {
+      expect(table).toBe("workout_history");
+      const filters: Record<string, string> = {};
+      const query = {
+        select: jest.fn(() => query),
+        eq: jest.fn((column: string, value: string) => {
+          filters[column] = value;
+          return query;
+        }),
+        maybeSingle: jest.fn(async () => ({
+          data: filters.user_id === userId ? serverRows.get(filters.client_save_id) ?? null : null,
+          error: null,
+        })),
+      };
+      return query;
+    });
+  });
+
+  it("marks a successful save and blocks resuming the exact same draft after cleanup fails", async () => {
+    const draft = makeDraft();
+    await markLiveDraftCompleted(userId, draft.draftId);
+    const restored = JSON.parse(JSON.stringify(draft));
+    await expect(isLiveDraftCompleted(restored, userId)).resolves.toBe(true);
+    expect(supabase.from).not.toHaveBeenCalled();
+    expect(await isLiveDraftCompleted(makeDraft(), userId)).toBe(false);
+  });
+
+  it("detects a committed workout from the server if the app crashed before writing the marker", async () => {
+    const draft = makeDraft();
+    serverRows.set(draft.draftId, { id: "saved-history-id" });
+    expect(await isLiveDraftCompleted(draft, userId)).toBe(true);
+    expect(supabase.from).toHaveBeenCalledWith("workout_history");
+    expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+      `mm:completedLiveDraft:${userId}:${draft.draftId}`, "1",
+    );
+  });
+
+  it("does not resume an unverified draft when the history lookup fails", async () => {
+    const draft = makeDraft();
+    (supabase.from as jest.Mock).mockImplementation(() => {
+      const query = {
+        select: jest.fn(() => query),
+        eq: jest.fn(() => query),
+        maybeSingle: jest.fn(async () => ({ data: null, error: { message: "offline" } })),
+      };
+      return query;
+    });
+    await expect(isLiveDraftCompleted(draft, userId)).rejects.toThrow(/Reconnect/);
+  });
+
+  it("never trusts another account's completion marker", async () => {
+    const draft = makeDraft();
+    await markLiveDraftCompleted(userId, draft.draftId);
+    await expect(isLiveDraftCompleted(draft, "person-b")).rejects.toThrow(/another account/);
+  });
 });
