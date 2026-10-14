@@ -260,3 +260,23 @@ it("sends original queue owner and retains jobs when account flips during RPC", 
   expect(jobs("user-b")).toEqual([]);
   expect(saveCompletedWorkoutFromReviewPayload).toHaveBeenCalledTimes(1);
 });
+
+it("stops on request-time owner mismatch without attempting or modifying later jobs", async () => {
+  storage.set(keyFor("user-a"), JSON.stringify([
+    job("save-1"), job("save-2"), job("save-3"),
+  ]));
+  (saveCompletedWorkoutFromReviewPayload as jest.Mock).mockRejectedValueOnce(
+    new Error("workout_owner_mismatch"),
+  );
+
+  expect(await syncPendingWorkouts()).toEqual({
+    synced: 0, remaining: 3, stoppedBecauseAuth: true,
+  });
+  expect(saveCompletedWorkoutFromReviewPayload).toHaveBeenCalledTimes(1);
+  expect(jobs("user-a")[0]).toEqual(expect.objectContaining({
+    clientSaveId: "save-1",
+    attempts: 1,
+    lastError: "workout_owner_mismatch",
+  }));
+  expect(jobs("user-a").slice(1)).toEqual([job("save-2"), job("save-3")]);
+});
