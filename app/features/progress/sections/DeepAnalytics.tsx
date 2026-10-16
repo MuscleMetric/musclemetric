@@ -8,6 +8,7 @@ import { useAppTheme } from "@/lib/useAppTheme";
 
 import type { DeepAnalyticsPayload } from "../deep-analytics/types";
 import { generatePrimaryInsight } from "../deep-analytics/utils/deepAnalyticsInsights";
+import { CardioAnalyticsView } from "../deep-analytics/components/CardioAnalyticsView";
 
 import {
   DeepAnalyticsHeader,
@@ -131,6 +132,9 @@ export default function DeepAnalytics({
           />
         }
       >
+        {payload.meta.exercise_type === 'cardio' ? (
+          <CardioAnalyticsView name={payload.meta.exercise_name} data={payload.cardio} timezone={payload.meta.timezone} />
+        ) : <>
         <DeepAnalyticsHeader payload={payload} />
 
         <DeepAnalyticsStatCards payload={payload} />
@@ -146,6 +150,7 @@ export default function DeepAnalytics({
         <WeightVsRepsSection payload={payload} />
 
         <SetContributionSection payload={payload} />
+        </>}
       </ScrollView>
     </Screen>
   );
