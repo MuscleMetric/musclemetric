@@ -6,7 +6,7 @@ import { useAppTheme } from "@/lib/useAppTheme";
 import type { FeedRow } from "../types";
 import { UserMetaRow } from "../components/UserMetaRow";
 import { FeedActionsRow } from "../components/FeedActionsRow";
-import { fmtVolume, toNumber } from "../utils/format";
+import { workoutSummary } from "../utils/workoutSummary";
 import { WorkoutCover } from "@/ui/media/WorkoutCover";
 
 type Props = {
@@ -149,9 +149,7 @@ export function WorkoutPostCard({
 
   const ws = item.workout_snapshot;
 
-  const volume = fmtVolume(ws?.total_volume ?? 0);
-  const sets = String(Math.max(0, toNumber(ws?.sets_count ?? 0)));
-  const exercises = String(Math.max(0, toNumber(ws?.exercises_count ?? 0)));
+  const stats = workoutSummary(ws);
 
   const workoutTitle = upperOrFallback(ws?.workout_title, "WORKOUT");
 
@@ -186,27 +184,18 @@ export function WorkoutPostCard({
 
         {/* STATS */}
         <View style={styles.statsPill}>
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>VOLUME</Text>
-            <View style={styles.statValueRow}>
-              <Text style={styles.statValue}>{volume}</Text>
-              <Text style={styles.unit}>kg</Text>
-            </View>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>SETS</Text>
-            <Text style={styles.statValue}>{sets}</Text>
-          </View>
-
-          <View style={styles.divider} />
-
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>EXERCISES</Text>
-            <Text style={styles.statValue}>{exercises}</Text>
-          </View>
+          {stats.map((stat, index) => (
+            <React.Fragment key={stat.label}>
+              {index > 0 && <View style={styles.divider} />}
+              <View style={styles.statCol}>
+                <Text style={styles.statLabel}>{stat.label}</Text>
+                <View style={styles.statValueRow}>
+                  <Text style={styles.statValue}>{stat.value}</Text>
+                  {stat.unit && <Text style={styles.unit}>{stat.unit}</Text>}
+                </View>
+              </View>
+            </React.Fragment>
+          ))}
         </View>
 
         {!!item.caption && <Text style={styles.caption}>{item.caption}</Text>}
