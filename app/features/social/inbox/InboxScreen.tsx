@@ -34,9 +34,11 @@ type NotificationType =
   | "post_liked"
   | "post_commented"
   | "following_posted_pr"
-  | "following_posted_workout";
+  | "following_posted_workout"
+  | "feedback_in_progress"
+  | "feedback_released";
 
-type EntityType = "profile" | "follow_request" | "post" | "comment";
+type EntityType = "profile" | "follow_request" | "post" | "comment" | "feedback";
 
 type NotificationRow = {
   id: string;
@@ -393,6 +395,9 @@ export default function InboxScreen() {
 
   const getTypeLabel = useCallback((type: NotificationType) => {
     switch (type) {
+      case "feedback_in_progress":
+      case "feedback_released":
+        return "Your feedback";
       case "followed_you":
         return "Follow";
       case "follow_request_received":
@@ -526,6 +531,10 @@ export default function InboxScreen() {
   const navigateFromNotification = useCallback(
     (item: NotificationRow) => {
       switch (item.type) {
+        case "feedback_in_progress":
+        case "feedback_released":
+          Alert.alert(item.title, item.body);
+          return;
         case "followed_you":
         case "follow_request_accepted": {
           if (item.actor_id) {
