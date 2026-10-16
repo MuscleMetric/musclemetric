@@ -46,6 +46,13 @@ declare
   notification_title text;
   notification_body text;
 begin
+  -- BEFORE triggers run before table CHECK constraints. Validate before composing
+  -- a release message or creating any audit/notification side effects.
+  if new.status = 'released' and nullif(btrim(new.released_version),'') is null then
+    raise exception using errcode = '23514',
+      message = 'released feedback requires a version',
+      constraint = 'feedback_release_version_required';
+  end if;
   if new.status is not distinct from old.status then
     new.status_updated_at := old.status_updated_at;
     return new;

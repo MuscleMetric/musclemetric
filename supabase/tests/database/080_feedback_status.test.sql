@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(12);
+select plan(14);
 insert into auth.users(id,email) values
  ('80000000-0000-4000-8000-000000000001','feedback-status@test.local');
 insert into public.profiles(id,name,email) values
@@ -23,6 +23,8 @@ update public.app_feedback set status='reviewed' where id='81000000-0000-4000-80
 update public.app_feedback set status='in_progress' where id='81000000-0000-4000-8000-000000000001';
 select is((select count(*) from public.notifications where type='feedback_in_progress'),1::bigint,'repeated transition does not spam');
 select throws_ok($$update public.app_feedback set status='released' where id='81000000-0000-4000-8000-000000000001'$$,'23514',null,'release requires a version');
+select throws_ok($$update public.app_feedback set status='released',released_version='   ' where id='81000000-0000-4000-8000-000000000001'$$,'23514',null,'blank release version is rejected before notification creation');
+select is((select count(*) from public.notifications where type='feedback_released'),0::bigint,'invalid releases leave no notification');
 update public.app_feedback set status='fixed' where id='81000000-0000-4000-8000-000000000001';
 select is((select count(*) from public.notifications where entity_type='feedback'),1::bigint,'fixed code is not announced as released');
 update public.app_feedback set status='released',released_version='1.0.7' where id='81000000-0000-4000-8000-000000000001';
