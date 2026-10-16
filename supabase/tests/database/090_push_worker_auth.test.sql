@@ -1,0 +1,12 @@
+begin;
+create extension if not exists pgtap with schema extensions;
+select plan(6);
+select vault.create_secret(repeat('a',64), 'push_worker_token');
+select ok(public.verify_push_worker_token_v1(repeat('a',64)), 'configured worker secret matches');
+select ok(not public.verify_push_worker_token_v1(repeat('b',64)), 'wrong token rejected');
+select ok(not public.verify_push_worker_token_v1(null), 'missing token rejected');
+select ok(not has_function_privilege('anon','public.verify_push_worker_token_v1(text)','EXECUTE'), 'anonymous callers cannot use validator');
+select ok(not has_function_privilege('authenticated','public.verify_push_worker_token_v1(text)','EXECUTE'), 'users cannot use validator');
+select ok(has_function_privilege('service_role','public.verify_push_worker_token_v1(text)','EXECUTE'), 'worker service can validate token');
+select * from finish();
+rollback;
