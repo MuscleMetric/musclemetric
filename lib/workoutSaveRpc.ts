@@ -44,13 +44,18 @@ function summarizePayload(payload: RpcWorkout) {
 }
 
 /**
- * Both workout entry points must call the same RPC and preserve client_save_id.
- * The server enforces idempotency and atomic parent/child persistence.
+ * Both workout entry points use the v2 RPC with the persisted originating
+ * owner, never an owner derived from a fresh session read. The database checks
+ * the owner against the actual request JWT before delegating to atomic v1.
  */
 export async function saveRpcWorkout(
   payload: RpcWorkout,
   source: SaveSource,
+  expectedOwnerUserId: string,
 ): Promise<SaveResult> {
+  if (!expectedOwnerUserId) {
+    throw new Error("Workout owner is missing. Please reopen the workout.");
+  }
   const summary = summarizePayload(payload);
   dlog(source === "live" ? "payload summary" : "review payload summary", summary);
   breadcrumb("rpc start", summary);
@@ -58,8 +63,9 @@ export async function saveRpcWorkout(
   let reportedRpcFailure = false;
 
   try {
-    const { data, error } = await supabase.rpc("save_completed_workout_v1", {
+    const { data, error } = await supabase.rpc("save_completed_workout_v2", {
       p_workout: payload,
+      p_expected_user_id: expectedOwnerUserId,
     });
 
     if (error) {
@@ -74,7 +80,7 @@ export async function saveRpcWorkout(
       // Mark the error as reported so the catch block does not send it twice.
       reportedRpcFailure = true;
       Sentry.captureException(error, {
-        tags: { area: "save_rpc", fn: "save_completed_workout_v1" },
+        tags: { area: "save_rpc", fn: "save_completed_workout_v2" },
         extra: {
           ...summary,
           code: error.code,
@@ -84,7 +90,9 @@ export async function saveRpcWorkout(
         },
       });
 
-      throw new Error(error.message);
+      const saveError = new Error(error.message) as Error & { code?: string };
+      saveError.code = error.code;
+      throw saveError;
     }
 
     const workoutHistoryId = String(data);

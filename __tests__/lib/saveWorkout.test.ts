@@ -34,6 +34,11 @@ jest.mock("@/lib/supabase", () => ({
   },
 }));
 
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(), setItem: jest.fn() },
+}));
+
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
   captureException: jest.fn(),

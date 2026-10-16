@@ -6,6 +6,7 @@ import { loadLiveDraftForUser, saveLiveDraftForUser } from "../persist/local";
 import { fetchServerDraft } from "../persist/server";
 
 import { log } from "@/lib/logger";
+import { isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
 
 /**
  * Boot order:
@@ -22,10 +23,22 @@ export async function bootLiveDraft(args: {
 }): Promise<LiveWorkoutDraft> {
   const { userId, workoutId, planWorkoutId, preferServer = true } = args;
 
-  const [local, server] = await Promise.all([
+  const [localCandidate, serverCandidate] = await Promise.all([
     loadLiveDraftForUser(userId),
     preferServer ? fetchServerDraft(userId) : Promise.resolve(null),
   ]);
+
+  // A save can commit even when clearing the server draft fails. Never hydrate
+  // an already-completed draft as a new editable session: an idempotent retry
+  // would silently discard any sets entered after that first save.
+  const local =
+    localCandidate && !(await isLiveDraftCompleted(localCandidate, userId))
+      ? localCandidate
+      : null;
+  const server =
+    serverCandidate && !(await isLiveDraftCompleted(serverCandidate, userId, { checkServer: true }))
+      ? serverCandidate
+      : null;
 
   const hasLocal = !!local?.draftId;
   const hasServer = !!server?.draftId;

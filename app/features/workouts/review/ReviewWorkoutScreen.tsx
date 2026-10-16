@@ -35,18 +35,9 @@ import {
 } from "@/lib/saveWorkout";
 import { clearAllMmLiveDraftKeysForUser } from "../live/persist/mmLocal";
 import { pauseLivePersist } from "../live/persist/persistControl";
+import { liveWorkoutClientSaveId, assertCurrentWorkoutOwner } from "@/lib/workoutSaveIdentity";
 
 type Params = { workoutId?: string; planWorkoutId?: string };
-
-function newClientSaveId() {
-  // simple UUID v4 fallback (good enough client-side)
-  // If you already have a uuid util in your codebase, swap to that.
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
 
 const DEBUG_LIVE = __DEV__;
 
@@ -110,7 +101,6 @@ export default function ReviewWorkoutScreen() {
   const [savedWorkoutId, setSavedWorkoutId] = useState<string | null>(null);
   const saveLock = useRef(false);
 
-  const clientSaveIdRef = useRef<string>(newClientSaveId());
 
   useEffect(() => {
     let cancelled = false;
@@ -154,6 +144,10 @@ export default function ReviewWorkoutScreen() {
 
   async function doSave() {
     if (!uid || !draft || !vm || saveLock.current || savedWorkoutId) return;
+    if (draft.userId !== uid) {
+      Alert.alert("Wrong account", "Please reopen your workout after switching accounts.");
+      return;
+    }
 
     if (!canSave) {
       Alert.alert(
@@ -177,14 +171,12 @@ export default function ReviewWorkoutScreen() {
             try {
               setSaving(true);
 
-              // ✅ Map LiveWorkoutDraft -> saveWorkout.ts args
-              // You said: “get lib/saveWorkout.ts working with LiveWorkoutDraft first”
-              // So we pass a “payload-like” object that saveWorkout.ts expects.
-              //
-              // IMPORTANT:
-              // Your saveWorkout.ts you mentioned earlier must include a builder that accepts LiveWorkoutDraft.
-              // If your current saveWorkout.ts still expects the old ReviewPayload type,
-              const clientSaveId = clientSaveIdRef.current;
+              // Persisted draft UUID doubles as the RPC idempotency key.
+              // Retries after app/screen restart must use the same value.
+              const clientSaveId = liveWorkoutClientSaveId(draft, uid);
+              // The alert can remain open while a user signs out or signs in.
+              // Check the current session at the moment Save is confirmed.
+              await assertCurrentWorkoutOwner(draft.userId);
               const durationSeconds = durationSecondsFromDraft(draft);
               const completedAt = new Date();
 

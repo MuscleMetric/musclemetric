@@ -1,4 +1,5 @@
 import * as Sentry from "@sentry/react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import {
   buildRpcPayloadFromDraft,
@@ -9,11 +10,15 @@ import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types"
 import type { ReviewPayload } from "@/lib/sessionStore";
 
 jest.mock("@/lib/supabase", () => ({
-  supabase: { rpc: jest.fn() },
+  supabase: { rpc: jest.fn(), from: jest.fn() },
 }));
 jest.mock("@sentry/react-native", () => ({
   addBreadcrumb: jest.fn(),
   captureException: jest.fn(),
+}));
+jest.mock("@react-native-async-storage/async-storage", () => ({
+  __esModule: true,
+  default: { getItem: jest.fn(), setItem: jest.fn() },
 }));
 jest.mock("@/lib/logger", () => ({ log: jest.fn() }));
 
@@ -95,6 +100,7 @@ const liveArgs = () => ({
 });
 const reviewArgs = () => ({
   clientSaveId: "client-save-1",
+  ownerUserId: "user-1",
   payload: legacyReview(),
   completedAt,
   totalDurationSec: 3600,
@@ -103,6 +109,14 @@ const reviewArgs = () => ({
 
 beforeEach(() => {
   jest.clearAllMocks();
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: null, error: null })),
+    };
+    return query;
+  });
 });
 
 it("saves both workout entry points through the same RPC with the same data contract", async () => {
@@ -115,7 +129,8 @@ it("saves both workout entry points through the same RPC with the same data cont
 
   expect(supabase.rpc).toHaveBeenCalledTimes(2);
   for (const call of (supabase.rpc as jest.Mock).mock.calls) {
-    expect(call[0]).toBe("save_completed_workout_v1");
+    expect(call[0]).toBe("save_completed_workout_v2");
+    expect(call[1].p_expected_user_id).toBe("user-1");
     expect(call[1].p_workout).toEqual(expect.objectContaining({
       client_save_id: "client-save-1",
       workout_id: "workout-1",
@@ -145,7 +160,7 @@ it.each(["live", "review"] as const)(
     expect(supabase.rpc).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     expect(Sentry.captureException).toHaveBeenCalledWith(
-      dbError, expect.objectContaining({ tags: { area: "save_rpc", fn: "save_completed_workout_v1" } }),
+      dbError, expect.objectContaining({ tags: { area: "save_rpc", fn: "save_completed_workout_v2" } }),
     );
   },
 );
@@ -161,6 +176,34 @@ it("reports unexpected network exceptions without changing their identity", asyn
   );
 });
 
+
+it("writes a durable completion marker before returning a successful live save", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "history-123", error: null });
+
+  expect(await saveCompletedWorkoutFromLiveDraft(liveArgs()))
+    .toEqual({ workoutHistoryId: "history-123" });
+  expect(AsyncStorage.setItem).toHaveBeenCalledWith(
+    "mm:completedLiveDraft:user-1:draft-1", "1",
+  );
+});
+
+it("does not falsely report an already committed save as failed if writing the marker fails", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "history-123", error: null });
+  (AsyncStorage.setItem as jest.Mock)
+    .mockResolvedValueOnce(undefined) // attempt marker was safely persisted
+    .mockRejectedValueOnce(new Error("disk full")); // completion marker failed
+
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).resolves.toEqual({
+    workoutHistoryId: "history-123",
+  });
+});
+
+it("refuses to send a workout if the pre-RPC attempt marker cannot be written", async () => {
+  (AsyncStorage.setItem as jest.Mock).mockRejectedValueOnce(new Error("disk full"));
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toThrow("disk full");
+  expect(supabase.rpc).not.toHaveBeenCalled();
+});
+
 it("keeps the same client_save_id when a live workout save is retried", async () => {
   (supabase.rpc as jest.Mock).mockResolvedValue({ data: "existing-history", error: null });
   const args = liveArgs();
@@ -171,6 +214,8 @@ it("keeps the same client_save_id when a live workout save is retried", async ()
   expect(supabase.rpc).toHaveBeenCalledTimes(2);
   expect((supabase.rpc as jest.Mock).mock.calls.map((call) => call[1].p_workout.client_save_id))
     .toEqual(["client-save-1", "client-save-1"]);
+  expect((supabase.rpc as jest.Mock).mock.calls.map((call) => call[1].p_expected_user_id))
+    .toEqual(["user-1", "user-1"]);
 });
 
 it("serializes cardio distance and time without adding strength-only fields", () => {
@@ -191,4 +236,73 @@ it("serializes cardio distance and time without adding strength-only fields", ()
     set_number: 1, drop_index: 0, reps: null, weight: null,
     time_seconds: 1800, distance: 5.5, notes: null,
   }]);
+});
+
+it("preserves queued owner's identity even when the request starts under another session", async () => {
+  // The mocked RPC emulates the v2 database contract. Its actual-JWT owner is
+  // user-b, but the queued job originated from user-1. It must be rejected.
+  let requestUserId = "user-1";
+  (supabase.rpc as jest.Mock).mockImplementation(async (name, params) => {
+    expect(name).toBe("save_completed_workout_v2");
+    requestUserId = "user-b"; // account switched just before RPC token attachment
+    expect(params.p_expected_user_id).toBe("user-1");
+    return requestUserId === params.p_expected_user_id
+      ? { data: "saved", error: null }
+      : { data: null, error: { name: "PostgrestError", code: "42501", message: "workout_owner_mismatch" } };
+  });
+
+  await expect(saveCompletedWorkoutFromReviewPayload(reviewArgs()))
+    .rejects.toThrow("workout_owner_mismatch");
+  expect(supabase.rpc).toHaveBeenCalledTimes(1);
+});
+
+it("always passes the persisted draft's user, not a newly signed-in user", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({ data: "saved", error: null });
+  const args = liveArgs();
+  await saveCompletedWorkoutFromLiveDraft(args);
+  expect(supabase.rpc).toHaveBeenCalledWith("save_completed_workout_v2", {
+    p_workout: expect.anything(),
+    p_expected_user_id: args.draft.userId,
+  });
+});
+
+it("preserves PostgREST 42501 error code so retry logic can stop on an auth failure", async () => {
+  (supabase.rpc as jest.Mock).mockResolvedValue({
+    data: null,
+    error: { code: "42501", message: "permission denied", details: "", hint: "" },
+  });
+  await expect(saveCompletedWorkoutFromLiveDraft(liveArgs())).rejects.toMatchObject({
+    code: "42501", message: "permission denied",
+  });
+});
+
+it("blocks a stale workout already committed by another device before sending RPC", async () => {
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: { id: "existing-history" }, error: null })),
+    };
+    return query;
+  });
+
+  const args = liveArgs();
+  args.draft.draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toThrow(/already saved/);
+  expect(supabase.rpc).not.toHaveBeenCalled();
+});
+
+it("requires a fresh history check even if a cached local draft was never submitted", async () => {
+  (supabase.from as jest.Mock).mockImplementation(() => {
+    const query: { select: jest.Mock; eq: jest.Mock; maybeSingle: jest.Mock } = {
+      select: jest.fn(() => query),
+      eq: jest.fn(() => query),
+      maybeSingle: jest.fn(async () => ({ data: null, error: { message: "offline" } })),
+    };
+    return query;
+  });
+  const args = liveArgs();
+  args.draft.draftId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toThrow(/Reconnect/);
+  expect(supabase.rpc).not.toHaveBeenCalled();
 });

@@ -20,6 +20,7 @@ import { Text, AppState } from "react-native";
 import { render, waitFor, fireEvent, act } from "@testing-library/react-native";
 import { ActiveWorkoutSessionProvider } from "@/app/features/workouts/live/session/ActiveWorkoutSessionProvider";
 import { useActiveWorkoutSession } from "@/app/features/workouts/live/session/useActiveWorkoutSession";
+import { isLiveDraftCompleted } from "@/lib/workoutSaveIdentity";
 
 const mockLoadLiveDraftForUser = jest.fn();
 const mockUsePathname = jest.fn();
@@ -27,6 +28,10 @@ const mockRouterPush = jest.fn();
 const mockAppStateRemove = jest.fn();
 const mockAddEventListener = jest.fn(() => ({
   remove: mockAppStateRemove,
+}));
+
+jest.mock("@/lib/workoutSaveIdentity", () => ({
+  isLiveDraftCompleted: jest.fn(),
 }));
 
 jest.mock("@/lib/authContext", () => ({
@@ -80,6 +85,7 @@ function Consumer() {
 describe("ActiveWorkoutSessionProvider", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    (isLiveDraftCompleted as jest.Mock).mockResolvedValue(false);
     jest.useFakeTimers();
     mockUsePathname.mockReturnValue("/(tabs)/workout");
 
@@ -131,6 +137,26 @@ describe("ActiveWorkoutSessionProvider", () => {
     expect(screen!.getByTestId("title").props.children).toBe("Leg Day");
     expect(screen!.getByTestId("workoutId").props.children).toBe("workout-1");
     expect(screen!.getByTestId("timerText").props.children).toBe("02:05");
+  });
+
+  it("does not offer a completed draft in the resume gate after cleanup fails", async () => {
+    mockLoadLiveDraftForUser.mockResolvedValue({
+      draftId: "completed-draft",
+      userId: "user-1",
+      title: "Previously saved",
+      timerElapsedSeconds: 120,
+    });
+    (isLiveDraftCompleted as jest.Mock).mockResolvedValue(true);
+
+    const screen = render(
+      <ActiveWorkoutSessionProvider><Consumer /></ActiveWorkoutSessionProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("loading").props.children).toBe("no");
+    });
+    expect(screen.getByTestId("hasActiveWorkout").props.children).toBe("no");
+    expect(screen.getByTestId("title").props.children).toBe("none");
   });
 
   it("exposes no active workout when no draft exists", async () => {
