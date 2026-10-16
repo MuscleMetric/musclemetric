@@ -18,10 +18,12 @@ type NotificationRow = {
     | "post_liked"
     | "post_commented"
     | "following_posted_pr"
-    | "following_posted_workout";
+    | "following_posted_workout"
+    | "feedback_in_progress"
+    | "feedback_released";
   title: string;
   body: string;
-  entity_type: "profile" | "follow_request" | "post" | "comment";
+  entity_type: "profile" | "follow_request" | "post" | "comment" | "feedback";
   entity_id: string;
   push_status: "pending" | "sent" | "failed" | "skipped" | null;
 };

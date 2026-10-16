@@ -13,7 +13,7 @@ insert into public.notifications(id,recipient_id,type,title,body,entity_type,ent
  ('31000000-0000-4000-8000-000000000002','30000000-0000-4000-8000-000000000002','followed_you','B','B','profile','30000000-0000-4000-8000-000000000001','pending');
 
 select ok(
-  has_table_privilege('authenticated','public.app_feedback','INSERT'),
+  has_column_privilege('authenticated','public.app_feedback','message','INSERT'),
   'authenticated role can reach feedback insert through the Data API'
 );
 select ok(
