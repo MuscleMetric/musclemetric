@@ -428,5 +428,6 @@ entrypoint = "./functions/close-expired-plans/index.ts"
 
 [functions.process-notification-push-jobs]
 enabled = true
-verify_jwt = true
+# Custom x-worker-token is validated against Vault before any queue access.
+verify_jwt = false
 entrypoint = "./functions/process-notification-push-jobs/index.ts"

@@ -1,6 +1,8 @@
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+import { authorizeWorker } from "./auth.ts";
+
 type ClaimedJob = {
   job_id: string;
   notification_id: string;
@@ -154,6 +156,12 @@ serve(async (req) => {
     if (req.method !== "POST") {
       return new Response("Method Not Allowed", { status: 405 });
     }
+
+    const authorized = await authorizeWorker(req.headers.get("x-worker-token"), async (token) => {
+      const { data, error } = await supabase.rpc("verify_push_worker_token_v1", { p_token: token });
+      return !error && data === true;
+    });
+    if (!authorized) return Response.json({ error: "Unauthorized" }, { status: 401 });
 
     let batchSize = 20;
 
