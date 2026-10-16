@@ -4,12 +4,14 @@ export type TrendDirection = "up" | "flat" | "down";
 
 export type DeepAnalyticsPayload = {
   meta: {
+    exercise_type?: "strength" | "cardio";
     exercise_id: string;
     exercise_name: string;
     unit: "kg";
     generated_at?: string;
     timezone?: string;
   };
+  cardio?: CardioAnalytics;
   cards: {
     current: {
       completed_at: string;
@@ -47,6 +49,24 @@ export type DeepAnalyticsPayload = {
       top_e1rm: number;
     }[];
   };
+};
+
+export type CardioSession = {
+  session_id: string;
+  completed_at: string;
+  distance_km: number | string | null;
+  duration_seconds: number | string | null;
+  pace_seconds_per_km: number | string | null;
+};
+
+export type CardioAnalytics = {
+  session_count: number;
+  total_distance_km: number | string;
+  total_duration_seconds: number | string;
+  longest_distance_km: number | string | null;
+  average_pace_seconds_per_km: number | string | null;
+  latest: CardioSession | null;
+  sessions: CardioSession[];
 };
 
 export type DeepAnalyticsInsightType =
