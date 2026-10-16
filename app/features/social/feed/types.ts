@@ -9,6 +9,9 @@ export type WorkoutSnapshot = {
   duration_seconds: number | null;
   exercises_count: number;
   sets_count: number;
+  workout_kind?: "strength" | "cardio" | "mixed";
+  total_distance_km?: number | string | null;
+  cardio_duration_seconds?: number | string | null;
   total_volume: number | string; // numeric may arrive as string
 };
 

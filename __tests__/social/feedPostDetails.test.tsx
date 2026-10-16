@@ -166,3 +166,15 @@ it.each(["workout", "pr"] as const)(
     expect(onOpenPost).toHaveBeenCalledWith(post);
   },
 );
+
+it('renders a cardio post with distance and time rather than lifting volume', () => {
+  const post = makePost('workout');
+  post.workout_snapshot = {...post.workout_snapshot!,workout_kind:'cardio',total_volume:0,total_distance_km:5,cardio_duration_seconds:1500};
+  const screen = render(<FeedItem item={post} onToggleLike={jest.fn()} onOpenComments={jest.fn()} />);
+  expect(screen.getByText('DISTANCE')).toBeTruthy();
+  expect(screen.getByText('5')).toBeTruthy();
+  expect(screen.getByText('km')).toBeTruthy();
+  expect(screen.getByText('25:00')).toBeTruthy();
+  expect(screen.queryByText('VOLUME')).toBeNull();
+  expect(screen.queryByText('kg')).toBeNull();
+});
