@@ -106,7 +106,7 @@ left join lateral (
       count(wsh.id)::int as sets_count,
       coalesce(sum(coalesce(wsh.weight,0) * coalesce(wsh.reps,0)), 0)::numeric as total_volume,
       bool_or(e.type = 'cardio') as has_cardio,
-      bool_or(e.type <> 'cardio') as has_strength,
+      bool_or(coalesce(e.type, 'strength') <> 'cardio') as has_strength,
       sum(wsh.distance) filter (where e.type = 'cardio' and wsh.distance > 0) as total_distance_km,
       sum(wsh.time_seconds) filter (where e.type = 'cardio' and wsh.time_seconds > 0) as cardio_duration_seconds
     from public.workout_exercise_history weh
@@ -240,7 +240,7 @@ left join lateral (
       count(wsh.id)::int as sets_count,
       coalesce(sum(coalesce(wsh.weight, 0) * coalesce(wsh.reps, 0)), 0)::numeric as total_volume,
       bool_or(e.type = 'cardio') as has_cardio,
-      bool_or(e.type <> 'cardio') as has_strength,
+      bool_or(coalesce(e.type, 'strength') <> 'cardio') as has_strength,
       sum(wsh.distance) filter (where e.type = 'cardio' and wsh.distance > 0) as total_distance_km,
       sum(wsh.time_seconds) filter (where e.type = 'cardio' and wsh.time_seconds > 0) as cardio_duration_seconds
     from public.workout_exercise_history weh
@@ -478,7 +478,7 @@ begin
       select
         coalesce(sum(coalesce(wsh.weight, 0) * coalesce(wsh.reps, 0)), 0)::numeric as total_volume,
       bool_or(e.type = 'cardio') as has_cardio,
-      bool_or(e.type <> 'cardio') as has_strength,
+      bool_or(coalesce(e.type, 'strength') <> 'cardio') as has_strength,
       sum(wsh.distance) filter (where e.type = 'cardio' and wsh.distance > 0) as total_distance_km,
       sum(wsh.time_seconds) filter (where e.type = 'cardio' and wsh.time_seconds > 0) as cardio_duration_seconds,
         count(*)::int as sets_count,
