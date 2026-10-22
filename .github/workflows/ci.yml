@@ -231,7 +231,7 @@ jobs:
         run: node scripts/verify-production-workout-rpc.cjs
 
   database:
-    name: Database baseline
+    name: Database baseline + tester E2E
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -252,6 +252,24 @@ jobs:
 
       - name: Run database behaviour tests
         run: supabase test db supabase/tests/database
+
+      - name: Set up Node.js for tester E2E
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install E2E client dependencies
+        run: npm ci
+
+      - name: Run authenticated tester E2E against disposable Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source <(supabase status --env --output-format text)
+          set +a
+          node scripts/e2e/tester-workout-flow.cjs
 
   gate:
     name: CI gate
@@ -292,7 +310,7 @@ jobs:
             echo "| ESLint | $(icon "$LINT_RESULT") |"
             echo "| TypeScript | $(icon "$TYPECHECK_RESULT") |"
             echo "| Jest | $(icon "$TEST_RESULT") |"
-            echo "| Database baseline + pgTAP | $(icon "$DATABASE_RESULT") |"
+            echo "| Database + pgTAP + tester E2E | $(icon "$DATABASE_RESULT") |"
             echo "| Live production save contract | $(icon "$PROD_CONTRACT_RESULT") |"
           } >> "$GITHUB_STEP_SUMMARY"
 
