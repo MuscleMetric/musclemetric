@@ -1,4 +1,4 @@
-const { sourceConstant, verifyWorkoutRpc } = require("../../scripts/verify-production-workout-rpc.cjs");
+const { sourceConstant, verifyWorkoutRpc, assertWorkoutSaveContract, assertWorkoutSaveReleaseContract } = require("../../scripts/verify-production-workout-rpc.cjs");
 
 const config = { url: "https://example.supabase.co", anonKey: "public-anon-test-key" };
 function response(status, body) {
@@ -39,4 +39,23 @@ test("blocks release if anonymous users can execute workout saves", async () => 
 test("blocks release for bad credentials or unexpected backend errors", async () => {
   const fetchImpl = async () => response(401, { code: "PGRST301", message: "Invalid JWT" });
   await expect(verifyWorkoutRpc({ ...config, fetchImpl })).rejects.toThrow(/Release blocked/);
+});
+
+test("the shipped app callsite and repository migrations match the live preflight contract", () => {
+  expect(assertWorkoutSaveReleaseContract()).toBeUndefined();
+});
+
+test("a future workout-save v3 call must fail release preflight until explicitly checked", () => {
+  const modified = 'await supabase.rpc("save_completed_workout_v3", { p_workout: payload, p_expected_user_id: owner });';
+  expect(() => assertWorkoutSaveContract(modified)).toThrow(/Update and validate the preflight before release/);
+});
+
+test("a renamed RPC argument blocks release even if the endpoint name is unchanged", () => {
+  const modified = 'await supabase.rpc("save_completed_workout_v2", { p_workout: payload, p_owner: owner });';
+  expect(() => assertWorkoutSaveContract(modified)).toThrow(/Update and validate the preflight before release/);
+});
+
+test("a dynamically resolved save RPC is not silently exempted from production checks", () => {
+  expect(() => assertWorkoutSaveContract('await supabase.rpc(dynamicName, { p_workout: payload });'))
+    .toThrow(/exactly one static Supabase RPC call/);
 });
