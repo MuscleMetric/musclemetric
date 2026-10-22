@@ -18,9 +18,14 @@ schema deploy, rather than blindly applying an already-present function.
 2. **Unit/integration behaviour:** Jest tests validate payload building,
    ownership propagation, persistence errors, retry identities, and cardio
    serialization. Any changed behaviour needs a new regression test.
-3. **Database semantics:** CI starts a fresh Supabase instance, reapplies
-   repository migrations and runs the database pgTAP suite (including V2
-   permissions, cross-user rejection, and idempotency).
+3. **Database semantics + real API E2E:** CI starts a fresh Supabase instance,
+   reapplies repository migrations and runs the pgTAP suite (including V2
+   permissions, cross-user rejection, and idempotency). It then creates a
+   disposable Supabase Auth account with username `tester` and saves strength,
+   cardio, and mixed workouts **over HTTP using its authenticated JWT**. It
+   retries each save and checks history detail, sets, volume, distance and
+   history feed. It must reject an incorrect owner and cannot run against
+   a non-local Supabase instance.
 4. **Real production compatibility:** `scripts/verify-production-workout-rpc.cjs`
    calls the live production PostgREST endpoint with an anonymous JWT and
    deliberately invalid parameters. Passing requires a `42501` database
@@ -79,10 +84,53 @@ not just an Expo developer session.
 **Stop release** if any required check fails. Record the build number,
 backend migration version and manual check results with the release.
 
+
+## Two tester environments
+
+- **Required in every pull request:** `scripts/e2e/tester-workout-flow.cjs`
+  uses a newly created `tester` account inside a disposable local Supabase
+  database. No production user records, passwords or service-role keys are
+  required. The local fixture and database are thrown away after the job.
+- **Actual existing production @tester account (optional daily run):**
+  `scripts/e2e/live-tester-workout-flow.cjs` signs in with a normal user
+  email/password, verifies its profile username is exactly `tester`, then
+  saves **one Quick Start mixed workout**, verifies retries and history, and
+  deletes only the newly created history row matched by owner, random
+  `client_save_id`, exact fixture notes and workout ID. Linked sets and PR
+  rows cascade. A failed cleanup is a hard test failure. This workflow does
+  not require admin or service-role credentials.
+
+### Enable the real production tester workflow
+
+The production tester account exists, but its password is intentionally not
+available to CI. GitHub's connection does not allow this repository's workflow
+secrets to be created from chat.
+
+1. In [repository settings](https://github.com/MuscleMetric/musclemetric/settings/secrets/actions),
+   add **Actions repository secrets** `E2E_TESTER_EMAIL` and
+   `E2E_TESTER_PASSWORD` for the existing `tester` account. Never commit or
+   send the password into a PR.
+2. Run the workflow manually from
+   [Live tester account E2E](https://github.com/MuscleMetric/musclemetric/actions/workflows/live-tester-e2e.yml)
+   after this PR is merged. Check that it saves **and cleans up** the fixture.
+3. In [Actions variables](https://github.com/MuscleMetric/musclemetric/settings/variables/actions),
+   set `ENABLE_LIVE_TESTER_E2E=true` to activate its scheduled daily
+   03:17 UTC run. Without the variable, the scheduled job is deliberately
+   skipped; a manual dispatch still tries to run and fails explicitly if
+   secrets are missing.
+
+This separate live check is not yet part of the required `CI gate`. Do not
+add a secret-dependent live account test to PR CI until the credential and
+environment policy are settled. The **disposable tester E2E is required**
+via the existing database job.
+
+**Scope:** These tests exercise Supabase authentication + HTTP/RPC + history
+rather than tapping through the Expo iOS UI. A device/simulator E2E suite is
+a separate improvement.
+
 ## Next investments
 
-- Add an isolated E2E environment with a disposable authenticated test account
-  that actually saves, reads back and cleans up a fixture workout.
+- Add iOS simulator-level E2E for review screen -> save -> recent activity.
 - Extend production contract checks to other release-critical RPCs *using safe
   probes tailored to each function*, not anonymous writes to arbitrary RPCs.
 - Automate remote migration-inventory comparison after securely configuring a
