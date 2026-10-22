@@ -267,7 +267,7 @@ jobs:
         run: |
           set -euo pipefail
           set -a
-          source <(supabase status --env --output-format text)
+          source <(supabase status -o env)
           set +a
           node scripts/e2e/tester-workout-flow.cjs
 
