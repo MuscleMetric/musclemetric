@@ -37,7 +37,7 @@ function getAppSupabaseConfig() {
 async function verifyWorkoutRpc({ url, anonKey, fetchImpl = fetch }) {
   if (!url || !anonKey) throw new Error("Supabase URL and anon key are required.");
   const response = await fetchImpl(
-    `${url.replace(/\\/+$/, "")}/rest/v1/rpc/${FUNCTION}`,
+    `${url.replace(/\/+$/, "")}/rest/v1/rpc/${FUNCTION}`,
     {
       method: "POST",
       headers: {
