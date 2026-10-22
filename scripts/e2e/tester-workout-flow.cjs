@@ -182,6 +182,17 @@ async function main() {
     console.log("PASS " + scenario.name + " -> authenticated save, retry, history detail and feed");
   }
 
+  // Catch the regression where cardio saves successfully but analytics is empty.
+  const cardioAnalytics = expectData(await userClient.rpc("get_exercise_deep_analytics", {
+    p_exercise_id: ids[1],
+  }), "Cardio deep analytics after saved workouts");
+  assert.equal(cardioAnalytics.meta?.exercise_type, "cardio");
+  assert.equal(Number(cardioAnalytics.cardio?.session_count), 2);
+  assert.equal(Number(cardioAnalytics.cardio?.total_distance_km), 8.2);
+  assert.equal(Number(cardioAnalytics.cardio?.total_duration_seconds), 3000);
+  assert.equal(cardioAnalytics.cardio?.sessions?.length, 2);
+  console.log("PASS cardio deep analytics contains saved run sessions");
+
   const incorrectOwner = await userClient.rpc("save_completed_workout_v2", {
     p_workout: workoutPayload({
       clientSaveId: randomUUID(), label: "ownership_reject",
