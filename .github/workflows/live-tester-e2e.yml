@@ -1,0 +1,50 @@
+name: Live tester account E2E
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-tester-workout-e2e
+  cancel-in-progress: false
+
+jobs:
+  tester_production:
+    name: Production tester save/read/cleanup
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_LIVE_TESTER_E2E == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate credentials are configured
+        shell: bash
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: |
+          if [ -z "$E2E_TESTER_EMAIL" ] || [ -z "$E2E_TESTER_PASSWORD" ]; then
+            echo "::error::Configure E2E_TESTER_EMAIL and E2E_TESTER_PASSWORD GitHub Actions secrets."
+            exit 1
+          fi
+
+      - name: Real production tester E2E
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/live-tester-workout-flow.cjs
