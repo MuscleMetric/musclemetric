@@ -293,6 +293,7 @@ jobs:
             echo "| TypeScript | $(icon "$TYPECHECK_RESULT") |"
             echo "| Jest | $(icon "$TEST_RESULT") |"
             echo "| Database baseline + pgTAP | $(icon "$DATABASE_RESULT") |"
+            echo "| Live production save contract | $(icon "$PROD_CONTRACT_RESULT") |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce CI gate
