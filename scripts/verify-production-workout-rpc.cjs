@@ -15,6 +15,50 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const FUNCTION = "save_completed_workout_v2";
+const REQUIRED_ARGUMENTS = ["p_expected_user_id", "p_workout"];
+
+/**
+ * Verify the live-app callsite still matches the endpoint this preflight
+ * checks. If the app switches to v3 or changes parameter names, block the
+ * build until the production probe is explicitly updated and verified.
+ */
+function assertWorkoutSaveContract(source) {
+  const calls = [...source.matchAll(
+    /\bsupabase\s*\.\s*rpc\s*\(\s*(['"])([A-Za-z_][A-Za-z_0-9]*)\1\s*,\s*\{([\s\S]*?)\}\s*\)/g,
+  )];
+  if (calls.length !== 1) {
+    throw new Error("Expected exactly one static Supabase RPC call in lib/workoutSaveRpc.ts; release blocked.");
+  }
+  const [, , name, argumentObject] = calls[0];
+  const keys = [...argumentObject.matchAll(
+    /(?:^|,)\s*([A-Za-z_][A-Za-z_0-9]*)\s*:/gm,
+  )].map((match) => match[1]).sort();
+
+  if (name !== FUNCTION || JSON.stringify(keys) !== JSON.stringify(REQUIRED_ARGUMENTS)) {
+    throw new Error(
+      `Workout save callsite uses ${name}(${keys.join(", ")}), but live preflight checks ${FUNCTION}(${REQUIRED_ARGUMENTS.join(", ")}). Update and validate the preflight before release.`,
+    );
+  }
+  return true;
+}
+
+function assertWorkoutSaveMigration() {
+  const migrationDir = path.join(__dirname, "../supabase/migrations");
+  const declaration = new RegExp(
+    `\\bcreate\\s+(?:or\\s+replace\\s+)?function\\s+public\\.${FUNCTION}\\s*\\(`,
+    "i",
+  );
+  const present = fs.readdirSync(migrationDir)
+    .filter((name) => name.endsWith(".sql"))
+    .some((name) => declaration.test(fs.readFileSync(path.join(migrationDir, name), "utf8")));
+  if (!present) throw new Error(`No SQL migration declares public.${FUNCTION}; release blocked.`);
+}
+
+function assertWorkoutSaveReleaseContract() {
+  const rpcSource = fs.readFileSync(path.join(__dirname, "../lib/workoutSaveRpc.ts"), "utf8");
+  assertWorkoutSaveContract(rpcSource);
+  assertWorkoutSaveMigration();
+}
 
 function sourceConstant(source, name) {
   const match = source.match(new RegExp(
@@ -78,6 +122,7 @@ async function main() {
     console.log("Production workout RPC preflight skipped for non-production EAS build.");
     return;
   }
+  assertWorkoutSaveReleaseContract();
   await verifyWorkoutRpc(getAppSupabaseConfig());
   console.log("Production workout save RPC is deployed and rejects anonymous calls.");
 }
@@ -89,4 +134,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { sourceConstant, verifyWorkoutRpc };
+module.exports = { sourceConstant, verifyWorkoutRpc, assertWorkoutSaveContract, assertWorkoutSaveMigration, assertWorkoutSaveReleaseContract };
