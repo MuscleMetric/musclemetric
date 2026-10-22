@@ -182,15 +182,15 @@ async function main() {
     console.log("PASS " + scenario.name + " -> authenticated save, retry, history detail and feed");
   }
 
-  const incorrectOwner = expectData(await userClient.rpc("save_completed_workout_v2", {
+  const incorrectOwner = await userClient.rpc("save_completed_workout_v2", {
     p_workout: workoutPayload({
       clientSaveId: randomUUID(), label: "ownership_reject",
       exercises: [{ id: ids[0], sets: [{ reps: 1, weight: 1 }] }],
     }),
     p_expected_user_id: randomUUID(),
-  }).then(({ data, error }) => ({ data: { data, error }, error: null })), "Owner rejection response");
+  });
   assert.equal(incorrectOwner.data, null, "Cross-user save must not succeed");
-  assert.equal(incorrectOwner.error.code, "42501", "Cross-user save must return permission denial");
+  assert.equal(incorrectOwner.error?.code, "42501", "Cross-user save must return permission denial");
   console.log("PASS cross-owner workout rejection");
   console.log("PASS real Supabase HTTP/Auth/PostgREST tester E2E");
   // No cleanup is needed: the entire local DB is discarded with the CI runner.
