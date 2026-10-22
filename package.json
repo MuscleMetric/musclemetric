@@ -12,7 +12,9 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "test": "jest",
-    "test:ci": "jest --runInBand"
+    "test:ci": "jest --runInBand",
+    "preflight:production": "node scripts/verify-production-workout-rpc.cjs",
+    "eas-build-pre-install": "node scripts/verify-production-workout-rpc.cjs"
   },
   "dependencies": {
     "@expo-google-fonts/montserrat": "^0.4.2",
