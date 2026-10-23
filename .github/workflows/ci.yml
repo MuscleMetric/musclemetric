@@ -230,6 +230,9 @@ jobs:
       - name: Verify deployed workout saving contract
         run: node scripts/verify-production-workout-rpc.cjs
 
+      - name: Verify deployed profile settings function (expect failure until migrated)
+        run: node scripts/verify-production-profile-settings-rpc.cjs
+
   database:
     name: Database baseline + tester E2E
     runs-on: ubuntu-latest
