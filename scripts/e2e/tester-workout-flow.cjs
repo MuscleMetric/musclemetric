@@ -208,15 +208,21 @@ async function main() {
   assert.equal(cardioAnalytics.cardio?.sessions?.length, 2);
   console.log("PASS cardio deep analytics contains saved run sessions");
 
+  const forbiddenClientSaveId = randomUUID();
   const incorrectOwner = await userClient.rpc("save_completed_workout_v2", {
     p_workout: workoutPayload({
-      clientSaveId: randomUUID(), label: "ownership_reject",
+      clientSaveId: forbiddenClientSaveId, label: "ownership_reject",
       exercises: [{ id: ids[0], sets: [{ reps: 1, weight: 1 }] }],
     }),
     p_expected_user_id: randomUUID(),
   });
   assert.equal(incorrectOwner.data, null, "Cross-user save must not succeed");
   assert.equal(incorrectOwner.error?.code, "42501", "Cross-user save must return permission denial");
+  const rejectedRows = expectData(await admin.from("workout_history")
+    .select("id").eq("client_save_id", forbiddenClientSaveId),
+    "Verify rejected save wrote no workout");
+  assert.equal(rejectedRows.length, 0,
+    "Denied save must not leave an incomplete/unauthorised history record");
   console.log("PASS cross-owner workout rejection");
   await verifyDeterministicHistory({ url, anonKey, admin, userClient, userId, saved, exerciseIds: ids });
   const planFixture = await verifyTesterPlanFlow({ userClient, userId, exerciseIds: ids });
