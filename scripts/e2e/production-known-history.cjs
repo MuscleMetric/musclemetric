@@ -114,22 +114,26 @@ async function existingWorkoutIds(client, userId) {
     "List tester templates");
   return rows.map(row => row.id).sort();
 }
-function scenarioPayload(scenario, state, clientSaveId) {
-  return workoutPayload({
-    clientSaveId,
-    label: state.runId + "-" + scenario.name,
-    exercises: scenario.exercises.map(exercise => ({
-      id: state.exerciseIds[exercise.kind], sets: exercise.sets,
-    })),
-  });
+function scenarioPayload(scenario, state, clientSaveId, completedAt) {
+  return {
+    ...workoutPayload({
+      clientSaveId,
+      label: state.runId + "-" + scenario.name,
+      exercises: scenario.exercises.map(exercise => ({
+        id: state.exerciseIds[exercise.kind], sets: exercise.sets,
+      })),
+    }),
+    completed_at: completedAt,
+  };
 }
 async function saveFixture(client, state, scenario) {
   const clientSaveId = crypto.randomUUID();
   const record = { name: scenario.name, clientSaveId,
+    completedAt: new Date().toISOString(),
     notes: state.marker + "-" + scenario.name, historyId: null };
   state.workouts.push(record);
   persist(state); // Persist BEFORE the RPC: cleanup can find a committed but unacknowledged write.
-  const args = { p_workout: scenarioPayload(scenario, state, clientSaveId),
+  const args = { p_workout: scenarioPayload(scenario, state, clientSaveId, record.completedAt),
     p_expected_user_id: state.userId };
   record.historyId = unwrap(await client.rpc("save_completed_workout_v2", args),
     "Save " + scenario.name);
@@ -352,7 +356,7 @@ async function tests() {
     for (const scenario of SCENARIOS) {
       const row = state.workouts.find(x => x.name === scenario.name);
       const args = {
-        p_workout: scenarioPayload(scenario, state, row.clientSaveId),
+        p_workout: scenarioPayload(scenario, state, row.clientSaveId, row.completedAt),
         p_expected_user_id: userId,
       };
       const second = unwrap(await client.rpc("save_completed_workout_v2", args),
