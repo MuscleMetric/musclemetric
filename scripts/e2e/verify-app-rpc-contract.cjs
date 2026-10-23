@@ -52,9 +52,17 @@ function discoverRpcCalls(root = path.join(__dirname, "../..")) {
 }
 
 async function verifyAuthenticatedRpcCatalogue({ url, anonKey, accessToken, fetchImpl = fetch,
-  inventory = discoverRpcCalls() }) {
-  const { assertIsDisposableLocalDatabase } = require("./tester-workout-flow.cjs");
-  assertIsDisposableLocalDatabase(url);
+  inventory = discoverRpcCalls(), productionReadOnly = false }) {
+  if (productionReadOnly) {
+    // Only a GET /rest/v1/ catalogue request is issued by this function.
+    const endpoint = new URL(url);
+    assert.equal(endpoint.protocol, "https:", "Production catalogue must use HTTPS");
+    assert.equal(endpoint.hostname, "cpzgnhchdpkxnebjsyyi.supabase.co",
+      "Production catalogue target is locked to the official MuscleMetric project");
+  } else {
+    const { assertIsDisposableLocalDatabase } = require("./tester-workout-flow.cjs");
+    assertIsDisposableLocalDatabase(url);
+  }
   assert.ok(accessToken && anonKey, "Authenticated tester JWT and anon key required");
   const response = await fetchImpl(url.replace(/\/+$/, "") + "/rest/v1/", {
     headers: {
