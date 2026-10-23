@@ -6,6 +6,7 @@
 const assert = require("node:assert/strict");
 const { randomUUID, randomBytes } = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
+const { verifyTesterPlanFlow } = require("./tester-plan-flow.cjs");
 
 const url = process.env.API_URL;
 const anonKey = process.env.ANON_KEY;
@@ -203,6 +204,7 @@ async function main() {
   assert.equal(incorrectOwner.data, null, "Cross-user save must not succeed");
   assert.equal(incorrectOwner.error?.code, "42501", "Cross-user save must return permission denial");
   console.log("PASS cross-owner workout rejection");
+  await verifyTesterPlanFlow({ userClient, userId, exerciseIds: ids });
   console.log("PASS real Supabase HTTP/Auth/PostgREST tester E2E");
   // No cleanup is needed: the entire local DB is discarded with the CI runner.
 }
