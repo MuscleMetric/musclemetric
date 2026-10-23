@@ -1,0 +1,3 @@
+# Only the repository owner is a designated code owner.
+# Branch rules must separately require CODEOWNER approval; this file alone does not enforce review.
+* @harrycunningham04
