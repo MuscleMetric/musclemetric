@@ -109,6 +109,13 @@ async function counts(client, userId) {
   for (const table of COUNTS) out[table] = await count(client, table, userId);
   return out;
 }
+async function notificationCount(client, userId) {
+  const result = await client.from("notifications")
+    .select("id", { count: "exact", head: true }).eq("recipient_id", userId);
+  if (result.error) throw new Error("Read notifications: " + result.error.message);
+  assert.ok(Number.isInteger(result.count), "Missing notification count");
+  return result.count;
+}
 async function existingWorkoutIds(client, userId) {
   const rows = unwrap(await client.from("workouts").select("id").eq("user_id", userId),
     "List tester templates");
@@ -185,11 +192,13 @@ async function setup() {
       runId, marker: "AUTOMATED_E2E_FIXTURE " + runId, userId,
       baseline: { ...baseline, active_plan_id: profile.active_plan_id,
         weekly_workout_goal: profile.weekly_workout_goal,
-        settings: profile.settings, existingWorkoutIds: await existingWorkoutIds(client,userId) },
+        settings: profile.settings, existingWorkoutIds: await existingWorkoutIds(client,userId),
+        notificationCount: await notificationCount(client,userId) },
       exerciseIds: { strength: strength[0].id, cardio: cardio[0].id },
       workouts: [], posts: [], planId: null,
     };
     persist(state);
+    console.log("PRODUCTION E2E RUN ID: " + runId + " (non-secret cleanup identifier)");
     for (const scenario of SCENARIOS) await saveFixture(client, state, scenario);
     console.log("PASS SETUP: 3 real production workouts seeded, " +
       catalogue.verified + " static RPC routes visible");
@@ -502,6 +511,16 @@ async function cleanup() {
       assert.equal(finalProfile.active_plan_id, state.baseline.active_plan_id);
       assert.equal(finalProfile.weekly_workout_goal, state.baseline.weekly_workout_goal);
       assert.deepEqual(finalProfile.settings, state.baseline.settings);
+      assert.equal(await notificationCount(client, state.userId),
+        state.baseline.notificationCount, "Unexpected notification side effects");
+      for (const post of state.posts.filter(x => x.postId)) {
+        const comments = unwrap(await client.from("post_comments").select("id")
+          .eq("post_id",post.postId), "Verify comments cascaded");
+        const likes = unwrap(await client.from("post_likes").select("post_id")
+          .eq("post_id",post.postId), "Verify likes cascaded");
+        assert.deepEqual(comments, [], "Test post comments remain after deletion");
+        assert.deepEqual(likes, [], "Test post likes remain after deletion");
+      }
       console.log("PASS CLEANUP: no test workouts/posts/plans/goals/clones left; profile and original template preserved");
     });
     if (failures.length) {
