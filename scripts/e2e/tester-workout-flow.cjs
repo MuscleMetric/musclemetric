@@ -7,6 +7,7 @@ const assert = require("node:assert/strict");
 const { randomUUID, randomBytes } = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { verifyTesterPlanFlow } = require("./tester-plan-flow.cjs");
+const { discoverRpcCalls, verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
 
 const url = process.env.API_URL;
 const anonKey = process.env.ANON_KEY;
@@ -101,6 +102,14 @@ async function main() {
     "Verify tester user profile",
   );
   assert.equal(confirmedProfile.username, "tester");
+  const allAppRpcCalls = discoverRpcCalls();
+  const rpcCoverage = await verifyAuthenticatedRpcCatalogue({
+    url, anonKey, accessToken: signIn.session.access_token,
+    inventory: allAppRpcCalls,
+  });
+  console.log("PASS authenticated app RPC catalogue: " + rpcCoverage.verified +
+    " static API names; " + rpcCoverage.dynamic.length + " dynamic callsites require manual review");
+
 
   // Seed only this disposable local DB; exercise IDs are not production data.
   const ids = [randomUUID(), randomUUID()];
