@@ -8,7 +8,13 @@
 const assert = require("node:assert/strict");
 const { randomUUID, randomBytes } = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
-const { assertIsDisposableLocalDatabase } = require("./tester-workout-flow.cjs");
+function assertIsDisposableLocalDatabase(apiUrl) {
+  const endpoint = new URL(apiUrl);
+  if (endpoint.protocol !== "http:" ||
+      !["localhost", "127.0.0.1", "[::1]"].includes(endpoint.hostname)) {
+    throw new Error("History oracles refuse to run against non-local Supabase.");
+  }
+}
 
 function read(result, label) {
   if (result.error) throw new Error(label + ": " + result.error.message + " (" + result.error.code + ")");
