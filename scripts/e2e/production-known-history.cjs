@@ -76,6 +76,15 @@ function load() {
   assert.equal(state.marker, "AUTOMATED_E2E_FIXTURE " + state.runId);
   return state;
 }
+async function connectPublicConfig() {
+  const source = fs.readFileSync(path.join(__dirname, "../../lib/supabase.ts"), "utf8");
+  const url = sourceConstant(source, "SUPABASE_URL");
+  const anonKey = sourceConstant(source, "SUPABASE_ANON_KEY");
+  const parsed = new URL(url);
+  assert.equal(parsed.protocol, "https:");
+  assert.equal(parsed.hostname, EXPECTED_HOST);
+  return { url, anonKey };
+}
 async function connect() {
   const email = process.env.E2E_TESTER_EMAIL;
   const password = process.env.E2E_TESTER_PASSWORD;
@@ -309,6 +318,21 @@ async function verifyPrivatePost(client, state, workoutId) {
   }), "Read private post detail");
   assert.equal(detail.length, 1);
   assert.equal(detail[0].post_id, postId);
+  const workoutDetails = unwrap(await client.rpc("get_post_workout_details", {
+    p_post_id: postId,
+  }), "Read shared workout details");
+  assert.equal(workoutDetails?.[0]?.workout_history_id, workoutId,
+    "Post-linked workout ID must match the real saved session");
+  exact(workoutDetails?.[0]?.volume_kg, 815, "Shared workout exact lifting volume");
+  const editor = unwrap(await client.rpc("get_workout_for_post_v1", {
+    p_workout_history_id: workoutId,
+  }), "Load workout data for create-post view");
+  assert.ok(editor && typeof editor === "object", "Post editor must receive workout data");
+  const bootstrap = unwrap(await client.rpc("get_create_post_bootstrap_v1", {
+    p_workout_limit: 20, p_pr_limit: 20, p_query: null,
+  }), "Load create-post picker data");
+  assert.ok(bootstrap && typeof bootstrap === "object",
+    "Post creation picker must receive data");
   const comment = state.marker + " test-comment";
   const made = unwrap(await client.rpc("add_post_comment", {
     p_post_id: postId, p_body: comment,
@@ -381,6 +405,14 @@ async function tests() {
     }
     await verifyBadOwner(client, state);
     await verifyPrivatePost(client, state, state.workouts[0].historyId);
+    // A private tester post must remain inaccessible without authentication.
+    const { url, anonKey } = await connectPublicConfig();
+    const anonymous = createClient(url, anonKey, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const hidden = unwrap(await anonymous.from("posts").select("id")
+      .eq("id", state.posts[0].postId), "Check private post not exposed publicly");
+    assert.deepEqual(hidden, [], "Anonymous users must not see private test posts");
     await saveFixture(client, state, EXTRA);
     await verifyHistory(client, state, { workouts: 4, volume: 1215,
       distance: 10.2, seconds: 3600, cardioSessions: 3 });
