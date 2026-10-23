@@ -86,6 +86,18 @@ async function main() {
       p_limit: 20, p_cursor_completed_at: null, p_cursor_id: null, p_query: null,
     }), "Get production history feed");
     assert.equal(feed.items.filter((x) => x.workout_history_id === historyId).length, 1);
+
+    // Regression: the API can save a run while Deep Analytics still renders
+    // "No cardio sessions" because the dedicated analytics RPC is broken.
+    const analytics = unwrap(await client.rpc("get_exercise_deep_analytics", {
+      p_exercise_id: cardio[0].id,
+    }), "Read live tester cardio deep analytics");
+    assert.equal(analytics.meta?.exercise_type, "cardio");
+    assert.ok(Number(analytics.cardio?.session_count) >= 1,
+      "Cardio deep analytics unexpectedly has no sessions");
+    assert.ok((analytics.cardio?.sessions ?? []).some((s) => s.session_id === historyId),
+      "Saved cardio session missing from live Deep Analytics");
+    console.log("PASS actual production tester cardio deep analytics populated");
     console.log("PASS actual production tester authenticated save/read/retry");
   } catch (error) {
     originalFailure = error;
