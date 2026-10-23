@@ -140,3 +140,61 @@ it("rejects an interrupted sign-out before confirmation", async () => {
   );
   alert.mockRestore();
 });
+
+
+it("keeps the review visible and the draft intact when the save RPC fails", async () => {
+  const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  (saveCompletedWorkoutFromLiveDraft as jest.Mock).mockRejectedValue({
+    code: "PGRST202",
+    message: "Could not find save_completed_workout_v2",
+  });
+
+  const view = render(<ReviewWorkoutScreen />);
+  fireEvent.press(await view.findByText("Save workout now"));
+  const confirmation = alert.mock.calls.find(([title]) => title === "Save workout?");
+  const save = confirmation?.[2]?.find((b) => b.text === "Save");
+  await act(async () => { await save?.onPress?.(); });
+
+  expect(alert).toHaveBeenCalledWith(
+    "Save failed", expect.stringContaining("save_completed_workout_v2"),
+  );
+  expect(view.getByText("Save workout now")).toBeTruthy();
+  expect(saveCompletedWorkoutFromLiveDraft).toHaveBeenCalledTimes(1);
+  const { clearLiveDraftForUser } = require("@/app/features/workouts/live/persist/local");
+  const { clearServerDraft } = require("@/app/features/workouts/live/persist/server");
+  expect(clearLiveDraftForUser).not.toHaveBeenCalled();
+  expect(clearServerDraft).not.toHaveBeenCalled();
+  alert.mockRestore();
+});
+
+it("saves only once on double confirmation and exits review after an acknowledged save", async () => {
+  const alert = jest.spyOn(Alert, "alert").mockImplementation(() => {});
+  let resolveSave!: (value: { workoutHistoryId: string }) => void;
+  (saveCompletedWorkoutFromLiveDraft as jest.Mock).mockImplementation(
+    () => new Promise((resolve) => { resolveSave = resolve; }),
+  );
+
+  const view = render(<ReviewWorkoutScreen />);
+  fireEvent.press(await view.findByText("Save workout now"));
+  const confirmation = alert.mock.calls.find(([title]) => title === "Save workout?");
+  const save = confirmation?.[2]?.find((b) => b.text === "Save");
+
+  // The alert callback is async. Pressing twice before its first await
+  // finishes must not result in two RPC saves.
+  let firstSave!: Promise<unknown>;
+  await act(async () => {
+    firstSave = Promise.resolve(save?.onPress?.());
+    await save?.onPress?.();
+  });
+  expect(saveCompletedWorkoutFromLiveDraft).toHaveBeenCalledTimes(1);
+  await act(async () => {
+    resolveSave({ workoutHistoryId: "saved-history-id" });
+    await firstSave;
+  });
+
+  const { clearLiveDraftForUser } = require("@/app/features/workouts/live/persist/local");
+  expect(clearLiveDraftForUser).toHaveBeenCalledWith("user-a");
+  expect(view.queryByText("Save workout now")).toBeNull();
+  expect(alert).not.toHaveBeenCalledWith("Save failed", expect.anything());
+  alert.mockRestore();
+});
