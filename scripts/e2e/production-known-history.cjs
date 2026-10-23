@@ -404,86 +404,113 @@ async function cleanup() {
     console.log("CLEANUP: No manifest; setup wrote nothing (or never started)");
     return;
   }
-  const { client, profile } = await connect();
-  let error = null;
+  const { client } = await connect();
+  const failures = [];
+  const attempt = async (name, action) => {
+    try {
+      await action();
+    } catch (error) {
+      failures.push(name + ": " + error.message);
+      console.error("CLEANUP STEP FAILED (" + name + "): " + error.message);
+    }
+  };
   try {
-    // Delete posts BEFORE workouts (otherwise post snapshots lose their parent).
-    for (const entry of state.posts) {
-      const matches = unwrap(await client.from("posts")
-        .select("id,user_id,caption,visibility")
-        .eq("user_id", state.userId).eq("caption", entry.caption),
-      "Find only run-tagged posts");
-      for (const row of matches) {
-        assertMarker(row.caption, state);
-        assert.equal(row.visibility, "private", "Unexpected public post; stop cleanup");
-        await deleteExact(client, "posts", {
-          id: row.id, user_id: state.userId,
-          caption: row.caption, visibility: "private",
-        }, "private post");
+    // Each category runs independently so a bad post does not prevent workout
+    // cleanup. A failed category still fails the job and retains the manifest.
+    await attempt("private posts", async () => {
+      for (const entry of state.posts) {
+        const rows = unwrap(await client.from("posts")
+          .select("id,user_id,caption,visibility")
+          .eq("user_id", state.userId).eq("caption", entry.caption),
+        "Find only run-tagged posts");
+        for (const row of rows) {
+          assertMarker(row.caption, state);
+          assert.equal(row.visibility, "private", "Unexpected public post; skip deletion");
+          await deleteExact(client, "posts", {
+            id: row.id, user_id: state.userId,
+            caption: row.caption, visibility: "private",
+          }, "private post");
+        }
       }
-    }
-    // Account for successful plan creation whose response was interrupted.
-    const plans = unwrap(await client.from("plans")
-      .select("id,user_id,title").eq("user_id", state.userId)
-      .eq("title", "AUTOMATED_E2E_PLAN_" + state.runId), "Find run-tagged plan");
-    for (const plan of plans) {
-      assert.equal(plan.user_id, state.userId);
-      if (profile.active_plan_id === plan.id) {
-        const updated = unwrap(await client.from("profiles")
+    });
+
+    await attempt("restore active plan", async () => {
+      const profile = unwrap(await client.from("profiles")
+        .select("active_plan_id").eq("id",state.userId).single(),"Read active plan");
+      const plans = unwrap(await client.from("plans")
+        .select("id,user_id,title").eq("user_id", state.userId)
+        .eq("title", "AUTOMATED_E2E_PLAN_" + state.runId), "Find run-tagged plans");
+      if (profile.active_plan_id) {
+        assert.ok(plans.some(x => x.id === profile.active_plan_id),
+          "Active plan is not this run's plan; do not overwrite it");
+        const changed = unwrap(await client.from("profiles")
           .update({ active_plan_id: state.baseline.active_plan_id })
-          .eq("id", state.userId).eq("active_plan_id", plan.id)
+          .eq("id", state.userId).eq("active_plan_id", profile.active_plan_id)
           .select("id"), "Restore tester active plan");
-        assert.equal(updated.length, 1);
+        assert.equal(changed.length, 1);
       }
-      await deleteExact(client, "plans", {
-        id: plan.id, user_id: state.userId, title: plan.title,
-      }, "plan");
+    });
+
+    await attempt("run-tagged workout templates", async () => {
+      const tag = " [E2E_" + state.runId + "]";
+      const clones = unwrap(await client.from("workouts")
+        .select("id,user_id,title,created_source")
+        .eq("user_id", state.userId).eq("created_source", "plan_clone")
+        .like("title", "%" + tag), "Find only run-tagged plan clones");
+      for (const clone of clones) {
+        assert.ok(clone.title.endsWith(tag), "Unexpected workout title; skip deletion");
+        await deleteExact(client, "workouts", {
+          id: clone.id, user_id: state.userId, created_source: "plan_clone",
+        }, "plan clone");
+      }
+    });
+
+    await attempt("plans and cascaded goals", async () => {
+      const plans = unwrap(await client.from("plans")
+        .select("id,user_id,title").eq("user_id", state.userId)
+        .eq("title", "AUTOMATED_E2E_PLAN_" + state.runId), "Find run-tagged plan");
+      for (const plan of plans) {
+        await deleteExact(client, "plans", {
+          id: plan.id, user_id: state.userId, title: plan.title,
+        }, "run-tagged plan");
+      }
+    });
+
+    await attempt("workout histories", async () => {
+      const workouts = await resolveWorkouts(client, state);
+      for (const row of workouts) {
+        await deleteExact(client, "workout_history", {
+          id: row.id, user_id: state.userId,
+          client_save_id: row.client_save_id, notes: row.notes,
+        }, "training-history fixture");
+      }
+    });
+
+    await attempt("final baseline verification", async () => {
+      const remain = await counts(client, state.userId);
+      assert.deepEqual(remain, {
+        workout_history: state.baseline.workout_history,
+        posts: state.baseline.posts, plans: state.baseline.plans,
+        goals: state.baseline.goals,
+      }, "Test user did not return to baseline counts");
+      const templateIds = await existingWorkoutIds(client, state.userId);
+      assert.deepEqual(templateIds, state.baseline.existingWorkoutIds,
+        "Unexpected user workout template changes");
+      const finalProfile = unwrap(await client.from("profiles")
+        .select("active_plan_id,weekly_workout_goal,settings")
+        .eq("id", state.userId).single(), "Verify profile restored");
+      assert.equal(finalProfile.active_plan_id, state.baseline.active_plan_id);
+      assert.equal(finalProfile.weekly_workout_goal, state.baseline.weekly_workout_goal);
+      assert.deepEqual(finalProfile.settings, state.baseline.settings);
+      console.log("PASS CLEANUP: no test workouts/posts/plans/goals/clones left; profile and original template preserved");
+    });
+    if (failures.length) {
+      throw new Error(failures.join("; "));
     }
-    // Plan clones remain after deleting a plan: titles carry unique run tags.
-    const tag = " [E2E_" + state.runId + "]";
-    const clones = unwrap(await client.from("workouts")
-      .select("id,user_id,title,created_source")
-      .eq("user_id", state.userId).eq("created_source", "plan_clone")
-      .like("title", "%" + tag), "Find only run-tagged plan clones");
-    for (const clone of clones) {
-      assert.ok(clone.title.endsWith(tag));
-      await deleteExact(client, "workouts", {
-        id: clone.id, user_id: state.userId, created_source: "plan_clone",
-      }, "plan clone");
-    }
-    // All saved client IDs were persisted to disk BEFORE the save RPC began.
-    const workouts = await resolveWorkouts(client, state);
-    for (const row of workouts) {
-      await deleteExact(client, "workout_history", {
-        id: row.id, user_id: state.userId,
-        client_save_id: row.client_save_id, notes: row.notes,
-      }, "training-history fixture");
-    }
-    const remain = await counts(client, state.userId);
-    assert.deepEqual(remain, state.baseline && {
-      workout_history: state.baseline.workout_history,
-      posts: state.baseline.posts, plans: state.baseline.plans,
-      goals: state.baseline.goals,
-    }, "Test user was not returned to baseline counts");
-    const templateIds = await existingWorkoutIds(client, state.userId);
-    assert.deepEqual(templateIds, state.baseline.existingWorkoutIds,
-      "Unexpected user workout template changes");
-    const finalProfile = unwrap(await client.from("profiles")
-      .select("active_plan_id,weekly_workout_goal,settings")
-      .eq("id", state.userId).single(), "Verify baseline profile restored");
-    assert.equal(finalProfile.active_plan_id, state.baseline.active_plan_id);
-    assert.equal(finalProfile.weekly_workout_goal, state.baseline.weekly_workout_goal);
-    assert.deepEqual(finalProfile.settings, state.baseline.settings);
-    console.log("PASS CLEANUP: all run-tagged production workouts/posts/plan/goals/clones deleted; " +
-      "tester's original template and profile preserved");
     fs.unlinkSync(MANIFEST);
-  } catch (e) {
-    error = e;
-    console.error("CLEANUP FAILED: " + e.message + " — manifest retained for recovery");
   } finally {
     await client.auth.signOut();
   }
-  if (error) throw error;
 }
 
 const stages = { setup, test: tests, cleanup };
