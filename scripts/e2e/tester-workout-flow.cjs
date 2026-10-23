@@ -8,6 +8,7 @@ const { randomUUID, randomBytes } = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
 const { verifyTesterPlanFlow } = require("./tester-plan-flow.cjs");
 const { verifyTesterReadFlows } = require("./tester-read-flows.cjs");
+const { verifyEmptyHistory, verifyDeterministicHistory } = require("./verify-history-oracles.cjs");
 const { discoverRpcCalls, verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
 
 const url = process.env.API_URL;
@@ -119,6 +120,7 @@ async function main() {
     { id: ids[1], name: "E2E Outdoor Run", equipment: "Bodyweight", type: "cardio", is_public: true },
   ];
   expectData(await admin.from("exercises").insert(rows), "Seed local strength and cardio exercises");
+  await verifyEmptyHistory({ userClient });
 
   const scenarios = [
     {
@@ -145,6 +147,7 @@ async function main() {
     },
   ];
 
+  const saved = [];
   for (const scenario of scenarios) {
     const clientSaveId = randomUUID();
     const payload = workoutPayload({ clientSaveId, label: scenario.name, exercises: scenario.exercises });
@@ -190,6 +193,7 @@ async function main() {
       assert.ok(Number(matches[0].sets_count) >= 1, "Strength sets missing from history feed");
     }
 
+    saved.push({ name: scenario.name, id, clientSaveId });
     console.log("PASS " + scenario.name + " -> authenticated save, retry, history detail and feed");
   }
 
@@ -204,16 +208,23 @@ async function main() {
   assert.equal(cardioAnalytics.cardio?.sessions?.length, 2);
   console.log("PASS cardio deep analytics contains saved run sessions");
 
+  const forbiddenClientSaveId = randomUUID();
   const incorrectOwner = await userClient.rpc("save_completed_workout_v2", {
     p_workout: workoutPayload({
-      clientSaveId: randomUUID(), label: "ownership_reject",
+      clientSaveId: forbiddenClientSaveId, label: "ownership_reject",
       exercises: [{ id: ids[0], sets: [{ reps: 1, weight: 1 }] }],
     }),
     p_expected_user_id: randomUUID(),
   });
   assert.equal(incorrectOwner.data, null, "Cross-user save must not succeed");
   assert.equal(incorrectOwner.error?.code, "42501", "Cross-user save must return permission denial");
+  const rejectedRows = expectData(await admin.from("workout_history")
+    .select("id").eq("client_save_id", forbiddenClientSaveId),
+    "Verify rejected save wrote no workout");
+  assert.equal(rejectedRows.length, 0,
+    "Denied save must not leave an incomplete/unauthorised history record");
   console.log("PASS cross-owner workout rejection");
+  await verifyDeterministicHistory({ url, anonKey, admin, userClient, userId, saved, exerciseIds: ids });
   const planFixture = await verifyTesterPlanFlow({ userClient, userId, exerciseIds: ids });
   await verifyTesterReadFlows({ userClient, ...planFixture });
   console.log("PASS real Supabase HTTP/Auth/PostgREST tester E2E");
