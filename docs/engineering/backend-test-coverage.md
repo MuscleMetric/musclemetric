@@ -46,7 +46,7 @@ cleanup uses user ownership, an exact note marker and `client_save_id`.
 The broad audit discovered that `set_profile_settings_v1` is called by
 Experience and Primary Goal settings but is missing in the production
 database. The PR contains an invoker-security, owner-scoped migration and a
-regression test. The migration is **not** applied to production by this PR.
+regression test. The function was deployed to production as migration **20261023153517** and the production contract preflight passed after deployment.
 Once deployed, verify it via authenticated read-only inventory before
 shipping an app release. The daily production job will flag missing endpoints.
 
