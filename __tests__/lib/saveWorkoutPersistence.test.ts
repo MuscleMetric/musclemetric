@@ -306,3 +306,33 @@ it("requires a fresh history check even if a cached local draft was never submit
   await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toThrow(/Reconnect/);
   expect(supabase.rpc).not.toHaveBeenCalled();
 });
+
+it("preserves an unsaved live draft and retry identity when production lacks the save RPC", async () => {
+  const missingRpcError = {
+    name: "PostgrestError",
+    code: "PGRST202",
+    message: "Could not find save_completed_workout_v2 in the schema cache",
+    details: null,
+    hint: null,
+  };
+  (supabase.rpc as jest.Mock)
+    .mockResolvedValueOnce({ data: null, error: missingRpcError })
+    .mockResolvedValueOnce({ data: "existing-history", error: null });
+
+  const args = liveArgs();
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).rejects.toMatchObject({
+    code: "PGRST202",
+  });
+  expect(AsyncStorage.setItem).not.toHaveBeenCalledWith(
+    "mm:completedLiveDraft:user-1:draft-1", "1",
+  );
+
+  await expect(saveCompletedWorkoutFromLiveDraft(args)).resolves.toEqual({
+    workoutHistoryId: "existing-history",
+  });
+  const rpcCalls = (supabase.rpc as jest.Mock).mock.calls;
+  expect(rpcCalls).toHaveLength(2);
+  expect(rpcCalls[0][1].p_workout.client_save_id)
+    .toBe(rpcCalls[1][1].p_workout.client_save_id);
+  expect(rpcCalls[1][1].p_expected_user_id).toBe("user-1");
+});

@@ -213,8 +213,25 @@ jobs:
           retention-days: 14
 
 
+  production_contract:
+    name: Live production workout RPC
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Verify deployed workout saving contract
+        run: node scripts/verify-production-workout-rpc.cjs
+
   database:
-    name: Database baseline
+    name: Database baseline + tester E2E
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -236,6 +253,24 @@ jobs:
       - name: Run database behaviour tests
         run: supabase test db supabase/tests/database
 
+      - name: Set up Node.js for tester E2E
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install E2E client dependencies
+        run: npm ci
+
+      - name: Run authenticated tester E2E against disposable Supabase
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source <(supabase status -o env)
+          set +a
+          node scripts/e2e/tester-workout-flow.cjs
+
   gate:
     name: CI gate
     if: always()
@@ -244,6 +279,7 @@ jobs:
       - typecheck
       - tests
       - database
+      - production_contract
     runs-on: ubuntu-latest
 
     steps:
@@ -254,6 +290,7 @@ jobs:
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           DATABASE_RESULT: ${{ needs.database.result }}
+          PROD_CONTRACT_RESULT: ${{ needs.production_contract.result }}
         run: |
           icon() {
             case "$1" in
@@ -273,7 +310,8 @@ jobs:
             echo "| ESLint | $(icon "$LINT_RESULT") |"
             echo "| TypeScript | $(icon "$TYPECHECK_RESULT") |"
             echo "| Jest | $(icon "$TEST_RESULT") |"
-            echo "| Database baseline + pgTAP | $(icon "$DATABASE_RESULT") |"
+            echo "| Database + pgTAP + tester E2E | $(icon "$DATABASE_RESULT") |"
+            echo "| Live production save contract | $(icon "$PROD_CONTRACT_RESULT") |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Enforce CI gate
@@ -283,11 +321,13 @@ jobs:
           TYPECHECK_RESULT: ${{ needs.typecheck.result }}
           TEST_RESULT: ${{ needs.tests.result }}
           DATABASE_RESULT: ${{ needs.database.result }}
+          PROD_CONTRACT_RESULT: ${{ needs.production_contract.result }}
         run: |
           if [ "$LINT_RESULT" != "success" ] || \
              [ "$TYPECHECK_RESULT" != "success" ] || \
              [ "$TEST_RESULT" != "success" ] || \
-             [ "$DATABASE_RESULT" != "success" ]; then
+             [ "$DATABASE_RESULT" != "success" ] || \
+             [ "$PROD_CONTRACT_RESULT" != "success" ]; then
             echo "One or more required CI jobs failed."
             exit 1
           fi
