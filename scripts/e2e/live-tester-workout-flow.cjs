@@ -15,6 +15,7 @@ const path = require("node:path");
 const { createClient } = require("@supabase/supabase-js");
 const { sourceConstant } = require("../verify-production-workout-rpc.cjs");
 const { workoutPayload } = require("./tester-workout-flow.cjs");
+const { verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
 
 function unwrap(result, label) {
   if (result.error) throw new Error(label + ": " + result.error.message + " (" + result.error.code + ")");
@@ -47,6 +48,16 @@ async function main() {
       .select("id,username").eq("id",userId).single(), "Verify signed-in profile");
     assert.equal(profile.username?.toLowerCase(), "tester",
       "Refusing to write: provided credentials do not belong to username tester");
+
+    // Metadata-only verification for EVERY static app RPC on deployed
+    // production. Runs after tester username verification and before writes.
+    const catalogue = await verifyAuthenticatedRpcCatalogue({
+      url, anonKey, accessToken: signedIn.session.access_token,
+      productionReadOnly: true,
+    });
+    console.log("PASS live production RPC inventory: " + catalogue.verified +
+      " app endpoints; " + catalogue.dynamic.length + " dynamic callsites remain");
+
 
     const { data: strength, error: strengthError } = await client.from("exercises")
       .select("id").eq("is_public",true).eq("type","strength").limit(1);
@@ -86,6 +97,18 @@ async function main() {
       p_limit: 20, p_cursor_completed_at: null, p_cursor_id: null, p_query: null,
     }), "Get production history feed");
     assert.equal(feed.items.filter((x) => x.workout_history_id === historyId).length, 1);
+
+    // Regression: the API can save a run while Deep Analytics still renders
+    // "No cardio sessions" because the dedicated analytics RPC is broken.
+    const analytics = unwrap(await client.rpc("get_exercise_deep_analytics", {
+      p_exercise_id: cardio[0].id,
+    }), "Read live tester cardio deep analytics");
+    assert.equal(analytics.meta?.exercise_type, "cardio");
+    assert.ok(Number(analytics.cardio?.session_count) >= 1,
+      "Cardio deep analytics unexpectedly has no sessions");
+    assert.ok((analytics.cardio?.sessions ?? []).some((s) => s.session_id === historyId),
+      "Saved cardio session missing from live Deep Analytics");
+    console.log("PASS actual production tester cardio deep analytics populated");
     console.log("PASS actual production tester authenticated save/read/retry");
   } catch (error) {
     originalFailure = error;

@@ -1,0 +1,75 @@
+const { discoverRpcCalls, verifyAuthenticatedRpcCatalogue } =
+  require("../../scripts/e2e/verify-app-rpc-contract.cjs");
+
+test("discovers real backend RPC usages in the app", () => {
+  const { calls } = discoverRpcCalls();
+  const names = calls.map((x) => x.name);
+  expect(names).toContain("save_completed_workout_v2");
+  expect(names).toContain("get_exercise_deep_analytics");
+  expect(names).toContain("create_plan_v1");
+  expect(names).toContain("update_full_plan");
+  expect(names).toContain("get_workout_history_detail");
+  expect(new Set(names).size).toBe(names.length);
+});
+
+test("never executes arbitrary functions when checking the schema", async () => {
+  const fetchImpl = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ paths: { "/rpc/create_plan_v1": { post: {} } } }),
+  });
+  await expect(verifyAuthenticatedRpcCatalogue({
+    url: "http://127.0.0.1:54321",
+    anonKey: "test-anon", accessToken: "test-user-jwt", fetchImpl,
+    inventory: { calls: [{ name: "create_plan_v1", files: ["app/plans.tsx"] }], dynamic: [] },
+  })).resolves.toMatchObject({ verified: 1 });
+  expect(fetchImpl).toHaveBeenCalledWith(
+    "http://127.0.0.1:54321/rest/v1/",
+    expect.objectContaining({
+      headers: expect.objectContaining({ Accept: "application/openapi+json" }),
+    }),
+  );
+});
+
+test("fails when an app RPC has not been deployed", async () => {
+  const fetchImpl = jest.fn().mockResolvedValue({
+    ok: true, json: async () => ({ paths: { "/rpc/other_rpc": {} } }),
+  });
+  await expect(verifyAuthenticatedRpcCatalogue({
+    url: "http://localhost:54321",
+    anonKey: "test-anon", accessToken: "test-user-jwt", fetchImpl,
+    inventory: { calls: [{ name: "create_plan_v1", files: ["app/plans.tsx"] }], dynamic: [] },
+  })).rejects.toThrow("App RPCs missing");
+});
+
+test("refuses to run a production authenticated catalogue test in PR CI", async () => {
+  await expect(verifyAuthenticatedRpcCatalogue({
+    url: "https://cpzgnhchdpkxnebjsyyi.supabase.co",
+    anonKey: "test-anon", accessToken: "test-user-jwt",
+    inventory: { calls: [], dynamic: [] },
+  })).rejects.toThrow("Refusing to write E2E workouts");
+});
+
+
+test("allows only a locked HTTPS production endpoint in read-only catalogue mode", async () => {
+  const fetchImpl = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ paths: { "/rpc/create_plan_v1": { post: {} } } }),
+  });
+  const base = {
+    anonKey: "anon", accessToken: "tester-jwt", fetchImpl,
+    productionReadOnly: true,
+    inventory: { calls: [{ name: "create_plan_v1", files: [] }], dynamic: [] },
+  };
+  await expect(verifyAuthenticatedRpcCatalogue({
+    ...base, url: "https://cpzgnhchdpkxnebjsyyi.supabase.co",
+  })).resolves.toMatchObject({ verified: 1 });
+  expect(fetchImpl).toHaveBeenCalledWith(
+    "https://cpzgnhchdpkxnebjsyyi.supabase.co/rest/v1/",
+    expect.objectContaining({ headers: expect.objectContaining({
+      Accept: "application/openapi+json",
+    }) }),
+  );
+  await expect(verifyAuthenticatedRpcCatalogue({
+    ...base, url: "https://other-project.supabase.co",
+  })).rejects.toThrow("Production catalogue target is locked");
+});

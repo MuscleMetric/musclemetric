@@ -6,6 +6,9 @@
 const assert = require("node:assert/strict");
 const { randomUUID, randomBytes } = require("node:crypto");
 const { createClient } = require("@supabase/supabase-js");
+const { verifyTesterPlanFlow } = require("./tester-plan-flow.cjs");
+const { verifyTesterReadFlows } = require("./tester-read-flows.cjs");
+const { discoverRpcCalls, verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
 
 const url = process.env.API_URL;
 const anonKey = process.env.ANON_KEY;
@@ -100,6 +103,14 @@ async function main() {
     "Verify tester user profile",
   );
   assert.equal(confirmedProfile.username, "tester");
+  const allAppRpcCalls = discoverRpcCalls();
+  const rpcCoverage = await verifyAuthenticatedRpcCatalogue({
+    url, anonKey, accessToken: signIn.session.access_token,
+    inventory: allAppRpcCalls,
+  });
+  console.log("PASS authenticated app RPC catalogue: " + rpcCoverage.verified +
+    " static API names; " + rpcCoverage.dynamic.length + " dynamic callsites require manual review");
+
 
   // Seed only this disposable local DB; exercise IDs are not production data.
   const ids = [randomUUID(), randomUUID()];
@@ -203,6 +214,8 @@ async function main() {
   assert.equal(incorrectOwner.data, null, "Cross-user save must not succeed");
   assert.equal(incorrectOwner.error?.code, "42501", "Cross-user save must return permission denial");
   console.log("PASS cross-owner workout rejection");
+  const planFixture = await verifyTesterPlanFlow({ userClient, userId, exerciseIds: ids });
+  await verifyTesterReadFlows({ userClient, ...planFixture });
   console.log("PASS real Supabase HTTP/Auth/PostgREST tester E2E");
   // No cleanup is needed: the entire local DB is discarded with the CI runner.
 }
