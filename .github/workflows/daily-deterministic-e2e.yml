@@ -52,7 +52,17 @@ jobs:
           set -a
           source <(supabase status -o env)
           set +a
-          node scripts/e2e/tester-workout-flow.cjs
+          mkdir -p ci-artifacts
+          node scripts/e2e/tester-workout-flow.cjs 2>&1 | tee ci-artifacts/daily-e2e.log
+
+      - name: Keep 14 days of daily E2E results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: daily-fixture-e2e-${{ github.run_number }}
+          path: ci-artifacts/daily-e2e.log
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Report fixture isolation and coverage boundary
         if: always()
