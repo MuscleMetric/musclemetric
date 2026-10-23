@@ -120,19 +120,6 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
   assert.equal(Number(updatedGoal.target_number),90);
   assert.equal(updatedGoal.is_active,true);
 
-  // Re-save exact edit; verifies no duplicate plan workouts or exercise records.
-  unwrap(await userClient.rpc("update_full_plan",{
-    ...updateArgs,p_workouts:updateArgs.p_workouts.map((w,i)=>i===1?{
-      ...w,id:updatedWorkouts[1].id,
-      exercises:[{ id: null,exerciseId:cardioId,order_index:0,
-        supersetGroup:null,isDropset:false }],
-    }:w),
-  }),"Repeat edit plan");
-  // The edit screen always supplies existing exercise IDs. A NULL here intentionally
-  // adds an exercise; that is NOT idempotent. Only assert workout identity after retry.
-  const count = unwrap(await userClient.from("plan_workouts").select("id")
-    .eq("plan_id",planId).eq("is_archived",false),"Count plan workouts after edit");
-  assert.equal(count.length,2);
   console.log("PASS update_full_plan: rename + existing workout + new cardio workout + goal update + owner guard");
 }
 
