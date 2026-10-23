@@ -14,10 +14,10 @@ concurrency:
 
 jobs:
   tester_production:
-    name: Production tester setup / tests / cleanup
+    name: Production tester save/read/cleanup
     if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_LIVE_TESTER_E2E == 'true' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
 
     steps:
       - name: Checkout repository
@@ -43,40 +43,8 @@ jobs:
             exit 1
           fi
 
-      # All three stages use the existing production tester's normal user JWT.
-      # No service-role credential, admin API or direct SQL is provided.
-      # State stays on this job's runner only; all data is tagged with a run UUID.
-      - name: Stage 1 — Setup: seed reference workout history
+      - name: Real production tester E2E
         env:
           E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
           E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
-          MM_E2E_STATE_FILE: ci-artifacts/production-known-history-state.json
-        run: node scripts/e2e/production-known-history.cjs setup
-
-      - name: Stage 2 — Tests: real RPC outcomes, posts, plans and failures
-        env:
-          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
-          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
-          MM_E2E_STATE_FILE: ci-artifacts/production-known-history-state.json
-        run: node scripts/e2e/production-known-history.cjs test
-
-      - name: Stage 3 — Cleanup: remove and verify all tagged fixtures
-        if: always()
-        env:
-          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
-          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
-          MM_E2E_STATE_FILE: ci-artifacts/production-known-history-state.json
-        run: node scripts/e2e/production-known-history.cjs cleanup
-
-      - name: Report safety and behavioural scope
-        if: always()
-        run: |
-          {
-            echo "## Production tester E2E"
-            echo
-            echo "- Stage 1: authenticate tester and seed 3 known workouts"
-            echo "- Stage 2: validate real history and metrics, retry/failure cases, private post and plan operations; add 4th workout"
-            echo "- Stage 3: delete run-tagged posts/plans/plan clones/workout history and verify original template and profile"
-            echo "- No service-role secrets or schema migrations; cleanup runs even if earlier stages fail"
-            echo "- This does NOT claim behavioural validation of every RPC, Edge Function, or iOS screen"
-          } >> "$GITHUB_STEP_SUMMARY"
+        run: node scripts/e2e/live-tester-workout-flow.cjs
