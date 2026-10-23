@@ -121,6 +121,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
   assert.equal(updatedGoal.is_active,true);
 
   console.log("PASS update_full_plan: rename + existing workout + new cardio workout + goal update + owner guard");
+  return { planId, planWorkoutId: updatedWorkouts[0].id, workoutId: updatedWorkouts[0].workout_id };
 }
 
 module.exports = { verifyTesterPlanFlow };
