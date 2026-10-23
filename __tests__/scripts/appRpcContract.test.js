@@ -48,3 +48,28 @@ test("refuses to run a production authenticated catalogue test in PR CI", async 
     inventory: { calls: [], dynamic: [] },
   })).rejects.toThrow("Refusing to write E2E workouts");
 });
+
+
+test("allows only a locked HTTPS production endpoint in read-only catalogue mode", async () => {
+  const fetchImpl = jest.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ paths: { "/rpc/create_plan_v1": { post: {} } } }),
+  });
+  const base = {
+    anonKey: "anon", accessToken: "tester-jwt", fetchImpl,
+    productionReadOnly: true,
+    inventory: { calls: [{ name: "create_plan_v1", files: [] }], dynamic: [] },
+  };
+  await expect(verifyAuthenticatedRpcCatalogue({
+    ...base, url: "https://cpzgnhchdpkxnebjsyyi.supabase.co",
+  })).resolves.toMatchObject({ verified: 1 });
+  expect(fetchImpl).toHaveBeenCalledWith(
+    "https://cpzgnhchdpkxnebjsyyi.supabase.co/rest/v1/",
+    expect.objectContaining({ headers: expect.objectContaining({
+      Accept: "application/openapi+json",
+    }) }),
+  );
+  await expect(verifyAuthenticatedRpcCatalogue({
+    ...base, url: "https://other-project.supabase.co",
+  })).rejects.toThrow("Production catalogue target is locked");
+});
