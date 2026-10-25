@@ -58,7 +58,8 @@ test("live production E2E checks real RPCs rather than the restricted OpenAPI ca
   const source = fs.readFileSync(
     path.join(__dirname, "../../scripts/e2e/live-tester-workout-flow.cjs"), "utf8",
   );
-  expect(source).not.toMatch(/verifyAuthenticatedRpcCatalogue|fetch\\s*\\(/);
+  expect(source).not.toContain("verifyAuthenticatedRpcCatalogue");
+  expect(source).not.toContain("fetch(");
   expect(source).toContain('client.rpc("save_completed_workout_v2"');
   expect(source).toContain('client.rpc("get_workout_history_detail"');
   expect(source).toContain('client.rpc("get_workout_history_feed"');
