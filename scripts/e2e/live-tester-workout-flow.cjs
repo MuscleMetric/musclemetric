@@ -15,7 +15,6 @@ const path = require("node:path");
 const { createClient } = require("@supabase/supabase-js");
 const { sourceConstant } = require("../verify-production-workout-rpc.cjs");
 const { workoutPayload } = require("./tester-workout-flow.cjs");
-const { verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
 
 function unwrap(result, label) {
   if (result.error) throw new Error(label + ": " + result.error.message + " (" + result.error.code + ")");
@@ -49,14 +48,11 @@ async function main() {
     assert.equal(profile.username?.toLowerCase(), "tester",
       "Refusing to write: provided credentials do not belong to username tester");
 
-    // Metadata-only verification for EVERY static app RPC on deployed
-    // production. Runs after tester username verification and before writes.
-    const catalogue = await verifyAuthenticatedRpcCatalogue({
-      url, anonKey, accessToken: signedIn.session.access_token,
-      productionReadOnly: true,
-    });
-    console.log("PASS live production RPC inventory: " + catalogue.verified +
-      " app endpoints; " + catalogue.dynamic.length + " dynamic callsites remain");
+    // Production Supabase restricts GET /rest/v1/ (OpenAPI) to privileged keys.
+    // Never request that catalogue with this tester's public key or user JWT.
+    // The deterministic disposable-database E2E verifies the full app RPC
+    // catalogue; this production run verifies actual user-scoped RPC behaviour.
+    console.log("INFO production RPC catalogue checked by local E2E; testing live authenticated RPCs");
 
 
     const { data: strength, error: strengthError } = await client.from("exercises")

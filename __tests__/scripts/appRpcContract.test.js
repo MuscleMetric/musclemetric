@@ -1,3 +1,5 @@
+const fs = require("node:fs");
+const path = require("node:path");
 const { discoverRpcCalls, verifyAuthenticatedRpcCatalogue } =
   require("../../scripts/e2e/verify-app-rpc-contract.cjs");
 
@@ -41,35 +43,26 @@ test("fails when an app RPC has not been deployed", async () => {
   })).rejects.toThrow("App RPCs missing");
 });
 
-test("refuses to run a production authenticated catalogue test in PR CI", async () => {
+test("rejects production OpenAPI requests before any network call, even with the old override", async () => {
+  const fetchImpl = jest.fn();
   await expect(verifyAuthenticatedRpcCatalogue({
     url: "https://cpzgnhchdpkxnebjsyyi.supabase.co",
     anonKey: "test-anon", accessToken: "test-user-jwt",
+    productionReadOnly: true, fetchImpl,
     inventory: { calls: [], dynamic: [] },
   })).rejects.toThrow("Refusing to write E2E workouts");
+  expect(fetchImpl).not.toHaveBeenCalled();
 });
 
-
-test("allows only a locked HTTPS production endpoint in read-only catalogue mode", async () => {
-  const fetchImpl = jest.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({ paths: { "/rpc/create_plan_v1": { post: {} } } }),
-  });
-  const base = {
-    anonKey: "anon", accessToken: "tester-jwt", fetchImpl,
-    productionReadOnly: true,
-    inventory: { calls: [{ name: "create_plan_v1", files: [] }], dynamic: [] },
-  };
-  await expect(verifyAuthenticatedRpcCatalogue({
-    ...base, url: "https://cpzgnhchdpkxnebjsyyi.supabase.co",
-  })).resolves.toMatchObject({ verified: 1 });
-  expect(fetchImpl).toHaveBeenCalledWith(
-    "https://cpzgnhchdpkxnebjsyyi.supabase.co/rest/v1/",
-    expect.objectContaining({ headers: expect.objectContaining({
-      Accept: "application/openapi+json",
-    }) }),
+test("live production E2E checks real RPCs rather than the restricted OpenAPI catalogue", () => {
+  const source = fs.readFileSync(
+    path.join(__dirname, "../../scripts/e2e/live-tester-workout-flow.cjs"), "utf8",
   );
-  await expect(verifyAuthenticatedRpcCatalogue({
-    ...base, url: "https://other-project.supabase.co",
-  })).rejects.toThrow("Production catalogue target is locked");
+  expect(source).not.toContain("verifyAuthenticatedRpcCatalogue");
+  expect(source).not.toContain("fetch(");
+  expect(source).toContain('client.rpc("save_completed_workout_v2"');
+  expect(source).toContain('client.rpc("get_workout_history_detail"');
+  expect(source).toContain('client.rpc("get_workout_history_feed"');
+  expect(source).toContain('client.rpc("get_exercise_deep_analytics"');
+  expect(source).toContain("CLEANUP FAILURE:");
 });
