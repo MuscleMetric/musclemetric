@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(11);
+select plan(13);
 
 -- Fixture users exist only inside this rolled-back test transaction.
 insert into auth.users (id,email) values
@@ -25,6 +25,9 @@ select ok(not has_table_privilege('authenticated','public.profiles','TRUNCATE'),
 select ok(not has_table_privilege('anon','public.profiles','TRUNCATE'), 'anonymous client cannot truncate profiles');
 select ok(not has_function_privilege('authenticated','public.admin_new_users(integer, integer)','EXECUTE'), 'legacy admin email listing not exposed to client');
 select ok(has_function_privilege('service_role','public.admin_new_users(integer, integer)','EXECUTE'), 'trusted backend role retains administrative access');
+
+select ok(not has_function_privilege('authenticated','public.rpc_progress_overview(uuid, text)','EXECUTE'), 'legacy cross-user progress RPC denied to client');
+select ok(not has_function_privilege('authenticated','public.dev_delete_plan(uuid)','EXECUTE'), 'legacy arbitrary plan deletion RPC denied to client');
 
 select * from finish();
 rollback;
