@@ -27,9 +27,7 @@ export async function getProfileConnections(
     if (ids.length === 0) return [];
 
     const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, name, username")
-      .in("id", ids);
+      .rpc("get_social_identities_v1", { p_user_ids: ids });
 
     if (profilesError) throw profilesError;
 
@@ -56,9 +54,7 @@ export async function getProfileConnections(
   if (ids.length === 0) return [];
 
   const { data: profiles, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id, name, username")
-    .in("id", ids);
+    .rpc("get_social_identities_v1", { p_user_ids: ids });
 
   if (profilesError) throw profilesError;
 

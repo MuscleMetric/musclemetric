@@ -317,9 +317,7 @@ export default function InboxScreen() {
     }
 
     const { data, error } = await supabase
-      .from("profiles")
-      .select("id, name, username")
-      .in("id", actorIds);
+      .rpc("get_social_identities_v1", { p_user_ids: actorIds });
 
     if (error) {
       log("profiles fetch error:", error);
