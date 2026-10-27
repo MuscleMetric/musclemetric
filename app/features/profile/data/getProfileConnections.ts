@@ -31,7 +31,7 @@ export async function getProfileConnections(
 
     if (profilesError) throw profilesError;
 
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+    const byId = new Map(((profiles ?? []) as ProfileConnectionRow[]).map((p) => [p.id, p]));
     return ids
       .map((id) => byId.get(id))
       .filter(Boolean)
@@ -58,7 +58,7 @@ export async function getProfileConnections(
 
   if (profilesError) throw profilesError;
 
-  const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+  const byId = new Map(((profiles ?? []) as ProfileConnectionRow[]).map((p) => [p.id, p]));
   return ids
     .map((id) => byId.get(id))
     .filter(Boolean)
