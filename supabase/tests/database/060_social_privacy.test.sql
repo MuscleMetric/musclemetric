@@ -11,8 +11,11 @@ insert into public.profiles (id,name,email,visibility) values
  ('20000000-0000-4000-8000-000000000002','Social B','social-b@test.local','followers'),
  ('20000000-0000-4000-8000-000000000003','Social C','social-c@test.local','private');
 
+set local request.jwt.claim.sub='20000000-0000-4000-8000-000000000001';
 select ok(public.can_view_user('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000001'),'self is always viewable');
+set local request.jwt.claim.sub='20000000-0000-4000-8000-000000000002';
 select ok(public.can_view_user('20000000-0000-4000-8000-000000000002','20000000-0000-4000-8000-000000000001'),'public profile is viewable');
+set local request.jwt.claim.sub='20000000-0000-4000-8000-000000000001';
 select ok(not public.can_view_user('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000002'),'followers profile hidden before follow');
 select ok(not public.can_view_user('20000000-0000-4000-8000-000000000001','20000000-0000-4000-8000-000000000003'),'private profile hidden');
 
