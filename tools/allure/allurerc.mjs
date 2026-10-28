@@ -1,7 +1,7 @@
 export default {
-  name: process.env.MM_REPORT_PREVIEW === 'true'
+  name: process.env.MM_REPORT_COMBINED === 'true' ? 'MuscleMetric — complete database and production checks' : process.env.MM_REPORT_PREVIEW === 'true'
     ? 'MuscleMetric — SIMULATED report preview (no production calls)'
-    : 'MuscleMetric production API checks',
+    : process.env.MM_REPORT_SUITE === 'backend' ? 'MuscleMetric backend privacy, recovery and analytics' : 'MuscleMetric production API checks',
   output: './ci-artifacts/allure-report',
   plugins: { awesome: { options: { singleFile: true, reportLanguage: 'en' } } },
 };

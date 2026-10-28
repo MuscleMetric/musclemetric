@@ -27,6 +27,9 @@ env:
   MM_ALLURE_RESULTS: ci-artifacts/allure-results
 
 jobs:
+  database_regressions:
+    if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
+    uses: ./.github/workflows/backend-regressions.yml
   production_reference:
     name: Production tester setup / checks / cleanup
     if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true' }}
@@ -66,6 +69,17 @@ jobs:
           run-id: ${{ inputs.recovery_run_id }}
           github-token: ${{ github.token }}
           path: ci-artifacts
+      - name: Existing live production contract probes
+        if: ${{ inputs.recovery_run_id == '' }}
+        run: |
+          node scripts/e2e/database-checks.cjs production-contract
+          node scripts/e2e/database-checks.cjs profile-contract
+      - name: Existing live tester smoke check
+        if: ${{ inputs.recovery_run_id == '' }}
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/database-checks.cjs live-smoke
       - name: Prepare recovery record before production writes
         if: ${{ inputs.recovery_run_id == '' }}
         env:
@@ -101,22 +115,52 @@ jobs:
       - name: Summarise results including skipped or interrupted checks
         if: always()
         run: node scripts/e2e/production-report.cjs finalize
-      - name: Generate standalone Allure report
+      - name: Upload production results for combined report
         if: always()
-        run: tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/allure-results
-      - name: Upload Allure report and sanitised results
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-allure-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/allure-results/
+          if-no-files-found: error
+          retention-days: 14
+
+  report:
+    name: Combined database and production Allure report
+    if: ${{ always() && (needs.production_reference.result != 'skipped' || needs.database_regressions.result != 'skipped') }}
+    needs: [database_regressions, production_reference]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: npm ci --prefix tools/allure --ignore-scripts
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: '*-allure-results-${{ github.run_id }}-${{ github.run_attempt }}'
+          path: ci-artifacts/combined-results
+          merge-multiple: true
+      - name: Record job conclusions so incomplete suites cannot appear green
+        env:
+          MM_ALLURE_RESULTS: ci-artifacts/combined-results
+          DATABASE_RESULT: ${{ needs.database_regressions.result }}
+          PRODUCTION_RESULT: ${{ needs.production_reference.result }}
+        run: node scripts/e2e/combined-report.cjs
+      - name: Generate combined standalone report
+        env:
+          MM_REPORT_COMBINED: 'true'
+        run: tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/combined-results
+      - name: Upload complete report
         id: report
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: production-allure-report-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            ci-artifacts/allure-report/
-            ci-artifacts/allure-results/
-          if-no-files-found: warn
+          name: complete-database-allure-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/allure-report/
+          if-no-files-found: error
           retention-days: 14
       - name: Link report download
         if: ${{ always() && steps.report.outputs.artifact-url != '' }}
         env:
           REPORT_URL: ${{ steps.report.outputs.artifact-url }}
-        run: printf '\n[Download Allure report](%s) — unzip and open index.html.\n' "$REPORT_URL" >> "$GITHUB_STEP_SUMMARY"
+        run: printf '\n[Download COMPLETE database and production report](%s) — unzip and open index.html.\n' "$REPORT_URL" >> "$GITHUB_STEP_SUMMARY"

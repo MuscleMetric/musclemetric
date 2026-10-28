@@ -8,7 +8,8 @@ const path = require("node:path");
 const crypto = require("node:crypto");
 const { AsyncLocalStorage } = require("node:async_hooks");
 const context = new AsyncLocalStorage();
-const CASES = {
+const backend = process.env.MM_REPORT_SUITE === "backend";
+const CASES = backend ? require("./backend/cases.cjs") : {
   prepare: ["Setup", "Verify tester and prepare recovery record"],
   setup: ["Setup", "Seed known workout history"],
   "seed-strength": ["Setup", "Save strength workout: 815 kg"],
@@ -37,7 +38,7 @@ const CASES = {
 function directory() { return process.env.MM_ALLURE_RESULTS; }
 function sanitize(value) {
   let text = String(value ?? "");
-  for (const key of ["E2E_TESTER_EMAIL", "E2E_TESTER_PASSWORD", "GITHUB_TOKEN", "GH_TOKEN"]) {
+  for (const key of ["E2E_TESTER_EMAIL", "E2E_TESTER_PASSWORD", "GITHUB_TOKEN", "GH_TOKEN", "SERVICE_ROLE_KEY", "ANON_KEY", "DB_URL"]) {
     if (process.env[key]) text = text.split(process.env[key]).join("[REDACTED]");
   }
   return text.replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[TOKEN]")
@@ -54,10 +55,10 @@ function save(result) {
 function resultFor(id) {
   const [suite, name] = CASES[id] || ["Workflow", id];
   return { uuid: crypto.randomUUID(), historyId: id, testCaseId: id,
-    fullName: "production-known-history." + id, name,
+    fullName: (backend ? "backend-regressions." : "production-known-history.") + id, name,
     status: "unknown", stage: "running", start: Date.now(), steps: [],
     labels: [{ name: "parentSuite", value: process.env.MM_REPORT_PREVIEW === "true" ?
-      "REPORT PREVIEW — simulated, no production calls" : "MuscleMetric production API" },
+      "REPORT PREVIEW — simulated, no production calls" : backend ? "Disposable backend regression suite" : "MuscleMetric production API" },
     { name: "suite", value: suite }, { name: "framework", value: "Node scripts" }],
     description: "API-level verification. Unexecuted checks are skipped; cleanup is independently reported.",
   };
@@ -110,12 +111,12 @@ function finalize() {
     result.statusDetails = { message: "Not executed: an earlier step failed, or this is a cleanup-only run." };
     save(result); results.push(result);
   }
-  const cleanup = results.find(x => x.testCaseId === "cleanup-final baseline verification");
-  const clean = cleanup.status === "passed" && results.find(x => x.testCaseId === "cleanup")?.status === "passed";
+  const cleanup = results.find(x => x.testCaseId === (backend ? "backend-cleanup" : "cleanup-final baseline verification"));
+  const clean = cleanup.status === "passed" && (backend || results.find(x => x.testCaseId === "cleanup")?.status === "passed");
   const escape = x => sanitize(x).replace(/[|\r\n]/g, " ").replace(/</g, "&lt;");
-  const summary = ["## MuscleMetric production test report", "",
-    process.env.MM_REPORT_PREVIEW === "true" ? "**SIMULATED PREVIEW — no production tests ran.**" : "**Real production API run**",
-    "", clean ? "**Cleanup: account baseline verified.**" : "**Cleanup: NOT VERIFIED. Inspect cleanup before running again.**",
+  const summary = [backend ? "## MuscleMetric disposable backend regression report" : "## MuscleMetric production test report", "",
+    process.env.MM_REPORT_PREVIEW === "true" ? "**SIMULATED PREVIEW — no production tests ran.**" : backend ? "**Real HTTP/Auth/RPC tests against disposable local Supabase — no production access.**" : "**Real production API run**",
+    "", clean ? (backend ? "**Cleanup: disposable fixtures removed.**" : "**Cleanup: account baseline verified.**") : "**Cleanup: NOT VERIFIED. Inspect cleanup before running again.**",
     "", "Download the Allure report artifact, unzip it and open index.html in your browser.", "",
     "| Area | Check | Result |", "| --- | --- | --- |",
     ...results.map(r => `| ${r.labels.find(x => x.name === "suite").value} | ${r.name} | ${r.status} |`),
@@ -126,7 +127,23 @@ function finalize() {
   fs.writeFileSync(path.join(directory(), "summary.md"), summary);
   return results;
 }
-module.exports = { CASES, run, check, finalize, sanitize };
+function record(id, { suite, name, status, message, log, parentSuite = "Disposable database checks", start = Date.now(), stop = Date.now() }) {
+  const result = resultFor(id);
+  result.uuid = crypto.createHash("sha256").update(id).digest("hex");
+  result.name = name; result.status = status; result.stage = "finished";
+  result.start = start; result.stop = stop;
+  result.labels = [{ name: "parentSuite", value: parentSuite }, { name: "suite", value: suite }];
+  if (message) result.statusDetails = { message: sanitize(message) };
+  if (log && directory()) {
+    fs.mkdirSync(directory(), { recursive: true });
+    const source = result.uuid + "-attachment.txt";
+    fs.writeFileSync(path.join(directory(), source), sanitize(log));
+    result.attachments = [{ name: "Sanitised check output", source, type: "text/plain" }];
+  }
+  save(result);
+  return result;
+}
+module.exports = { CASES, run, check, finalize, sanitize, record };
 if (require.main === module) {
   if (process.argv[2] !== "finalize") throw new Error("Usage: production-report.cjs finalize");
   finalize();

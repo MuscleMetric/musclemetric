@@ -116,3 +116,13 @@ MM_REPORT_PREVIEW=true tools/allure/node_modules/.bin/allure generate --clean --
 
 Use a fresh results directory for each run. The report generator is pinned and
 locked in tools/allure to keep it outside the mobile app dependency graph.
+
+## Combined database report
+
+The **Production deterministic history E2E** workflow runs the reusable disposable database suite alongside the production checks, then combines their Allure results into `complete-database-allure-report-RUN-ATTEMPT`. Download the artifact, unzip it and open `index.html`.
+
+The Suites view separates disposable database checks from live production checks. Every pgTAP assertion has its own result, grouped by SQL file. Backend scenarios are grouped into cross-user privacy, workout recovery, server drafts and analytics. Failed assertions include expected/actual details; SQL files and legacy commands include sanitised output attachments. Upstream job conclusions are included so infrastructure failures cannot look like a passing test suite.
+
+All SQL files under `supabase/tests/database` are discovered automatically. Disposable checks run against a fresh local Supabase database with all migrations applied, including existing authenticated backend E2E and new privacy/recovery/analytics scenarios. CI and the daily deterministic workflow reuse the same suite. These tests do not prove that production has deployed the same migrations. Live contract probes and known-history checks are separately labelled.
+
+The new recovery checks exercise API requests, transaction rollback, concurrency, retries, account ownership and persisted server drafts. Device storage, app termination, navigation and offline UI still require device tests. Cleanup-only recovery skips the disposable suite.
