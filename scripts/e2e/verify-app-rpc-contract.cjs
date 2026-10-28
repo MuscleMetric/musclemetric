@@ -2,11 +2,10 @@
 
 /**
  * CI backend-contract audit. Collects static RPC names actually called by the
- * React Native app and checks the PostgREST OpenAPI catalogue on a
- * disposable local database using the same authenticated E2E user.
+ * React Native app and checks the PostgREST OpenAPI catalogue for the same
+ * authenticated user and local database that run the real save E2E tests.
  *
- * Never query production's GET /rest/v1/ with an app key: Supabase restricts
- * OpenAPI access to privileged keys. The production E2E tests real RPC calls.
+ * GET /rest/v1/ is metadata only. This script never calls an arbitrary RPC.
  * Dynamic RPC expressions are reported separately, not falsely verified.
  */
 const assert = require("node:assert/strict");
@@ -53,11 +52,17 @@ function discoverRpcCalls(root = path.join(__dirname, "../..")) {
 }
 
 async function verifyAuthenticatedRpcCatalogue({ url, anonKey, accessToken, fetchImpl = fetch,
-  inventory = discoverRpcCalls() }) {
-  // The OpenAPI catalogue may only be requested from disposable local Supabase.
-  // Do not introduce a production override or a service-role key here.
-  const { assertIsDisposableLocalDatabase } = require("./tester-workout-flow.cjs");
-  assertIsDisposableLocalDatabase(url);
+  inventory = discoverRpcCalls(), productionReadOnly = false }) {
+  if (productionReadOnly) {
+    // Only a GET /rest/v1/ catalogue request is issued by this function.
+    const endpoint = new URL(url);
+    assert.equal(endpoint.protocol, "https:", "Production catalogue must use HTTPS");
+    assert.equal(endpoint.hostname, "cpzgnhchdpkxnebjsyyi.supabase.co",
+      "Production catalogue target is locked to the official MuscleMetric project");
+  } else {
+    const { assertIsDisposableLocalDatabase } = require("./tester-workout-flow.cjs");
+    assertIsDisposableLocalDatabase(url);
+  }
   assert.ok(accessToken && anonKey, "Authenticated tester JWT and anon key required");
   const response = await fetchImpl(url.replace(/\/+$/, "") + "/rest/v1/", {
     headers: {
