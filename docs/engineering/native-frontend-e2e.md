@@ -34,3 +34,7 @@ The native app uses a distinct `.e2e` bundle ID and test-only password form. It 
 ## Limits
 
 This suite has no Android implementation. Provider-owned Apple/Google sign-in screens, push delivery, background eviction, Live Activities, realtime WebSockets and physical-device behavior are outside this first suite. Plans are not claimed as executed until their cleanup prerequisite is met. No schema permission changes are made by the workflow.
+
+## Separate job budgets
+
+Normal runs now use four dependent jobs: iOS build (100-minute job, 75-minute compile limit), backend regressions, iPhone UI tests (45-minute job, 20-minute test stage), and reset/report (20-minute job). The compiled Intel simulator app is transferred as a tar artifact preserving permissions. Each job gets a new runner: the frontend job boots its own simulator. Reset runs with `always()` and retrieves the durable pre-write manifest even if frontend execution times out. Manual cancellation or runner/service outages can still require the cleanup-only recovery workflow. Combined runs reuse the existing backend regression job before invoking this workflow.

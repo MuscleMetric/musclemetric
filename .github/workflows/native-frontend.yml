@@ -26,15 +26,15 @@ on:
 permissions:
   contents: read
   actions: read
+concurrency:
+  group: ${{ github.workflow == 'Production deterministic history E2E' && format('native-combined-{0}', github.run_id) || 'live-tester-workout-e2e' }}
+  cancel-in-progress: false
 jobs:
-  native:
+  setup:
     if: ${{ inputs.recovery_run_id == '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-    concurrency:
-      group: ${{ github.workflow == 'Production deterministic history E2E' && format('native-combined-{0}', github.run_id) || 'live-tester-workout-e2e' }}
-      cancel-in-progress: false
-    name: iPhone simulator journeys and Allure
+    name: 1 - Build iOS test app
     runs-on: macos-15-intel
-    timeout-minutes: 90
+    timeout-minutes: 100
     env:
       EXPO_PUBLIC_NATIVE_E2E: 'true'
       EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
@@ -50,10 +50,6 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
       - run: npm ci
       - name: Prepare isolated iOS Simulator bundle
         run: python3 scripts/e2e/native/prepare-ios.py
@@ -61,10 +57,62 @@ jobs:
         working-directory: ios
         run: pod install
       - name: Build standalone iOS Simulator app
-        timeout-minutes: 40
+        timeout-minutes: 75
         run: |
           set -o pipefail
-          xcodebuild -workspace ios/MuscleMetric.xcworkspace -scheme MuscleMetric -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO | tee "$RUNNER_TEMP/ios-build.log"
+          xcodebuild -workspace ios/MuscleMetric.xcworkspace -scheme MuscleMetric -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -arch x86_64 ONLY_ACTIVE_ARCH=YES -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO | tee "$RUNNER_TEMP/ios-build.log"
+      - name: Package simulator app preserving permissions
+        run: tar -C "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator" -czf "$RUNNER_TEMP/ios-app.tgz" MuscleMetric.app
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ios-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-app.tgz
+          retention-days: 7
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ios-build-log-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/ios-build.log
+  backend:
+    name: 2 - Backend regression tests
+    needs: setup
+    if: ${{ github.workflow != 'Production deterministic history E2E' }}
+    uses: ./.github/workflows/backend-regressions.yml
+  native:
+    name: 3 - iPhone frontend tests
+    needs: [setup, backend]
+    if: ${{ !cancelled() && needs.setup.result == 'success' && (needs.backend.result == 'success' || (github.workflow == 'Production deterministic history E2E' && needs.backend.result == 'skipped')) }}
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    outputs:
+      recovery_ready: ${{ steps.manifest.outcome == 'success' }}
+    env:
+      EXPO_PUBLIC_NATIVE_E2E: 'true'
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: native-test-proxy
+      MM_ALLURE_RESULTS: ci-artifacts/native-results
+      MAESTRO_CLI_NO_ANALYTICS: 'true'
+      CI: '1'
+      TZ: UTC
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: actions/download-artifact@v8
+        with:
+          name: ios-app-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}
+      - name: Unpack compiled app
+        run: mkdir -p "$RUNNER_TEMP/ios-app" && tar -xzf "$RUNNER_TEMP/ios-app.tgz" -C "$RUNNER_TEMP/ios-app"
       - name: Install pinned Maestro CLI
         run: |
           curl -fsSL https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.12.0/maestro.zip -o /tmp/maestro.zip
@@ -78,13 +126,14 @@ jobs:
           echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
-          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/MuscleMetric.app"
+          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/ios-app/MuscleMetric.app"
       - name: Verify production tester and prepare recovery manifest (read only)
         env:
           E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
           E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
         run: node scripts/e2e/native/fixtures.cjs prepare
       - name: Persist recovery manifest before any production writes
+        id: manifest
         uses: actions/upload-artifact@v7
         with:
           name: native-recovery-${{ github.run_id }}-${{ github.run_attempt }}
@@ -107,14 +156,52 @@ jobs:
           done
           node scripts/e2e/native/fixtures.cjs seed
           bash scripts/e2e/native/run.sh
-      - name: Restore production tester after success or failure
-        timeout-minutes: 5
+      - name: Preserve frontend results
         if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-intermediate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/native-results/
+          if-no-files-found: warn
+      - name: Shut down simulator
+        if: ${{ always() && env.SIMULATOR_ID != '' }}
+        run: xcrun simctl shutdown "$SIMULATOR_ID"
+  reset:
+    name: 4 - Reset tester and publish Allure
+    needs: [setup, backend, native]
+    if: ${{ always() && inputs.recovery_run_id == '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      EXPO_PUBLIC_NATIVE_E2E: 'true'
+      MM_ALLURE_RESULTS: ci-artifacts/native-results
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Download available frontend results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: native-intermediate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/native-results
+          merge-multiple: true
+      - name: Download pre-write recovery manifest
+        if: always()
+        uses: actions/download-artifact@v8
+        with:
+          pattern: native-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/native
+          merge-multiple: true
+      - name: Restore production tester
+        if: always()
+        timeout-minutes: 5
         env:
           E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
           E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
         run: |
-          if [ -n "${SIMULATOR_ID:-}" ]; then xcrun simctl terminate "$SIMULATOR_ID" com.musclemetric.app.e2e || true; fi
           node scripts/e2e/native/cleanup.cjs
       - name: Record missing or interrupted native tests
         if: always()
@@ -139,16 +226,10 @@ jobs:
           path: ci-artifacts/allure-report/
           if-no-files-found: error
           retention-days: 14
-      - name: Shut down simulator
-        if: ${{ always() && env.SIMULATOR_ID != '' }}
-        run: xcrun simctl shutdown "$SIMULATOR_ID"
 
   recovery:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_run_id != '' }}
     runs-on: ubuntu-latest
-    concurrency:
-      group: live-tester-workout-e2e
-      cancel-in-progress: false
     env:
       MM_ALLURE_RESULTS: ci-artifacts/native-results
     steps:

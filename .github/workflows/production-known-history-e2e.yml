@@ -28,7 +28,7 @@ env:
 
 jobs:
   native_frontend:
-    needs: production_reference
+    needs: [production_reference, database_regressions]
     if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
     uses: ./.github/workflows/native-frontend.yml
     secrets:
