@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 "use strict";
+/* global __dirname */
 
 /**
  * Three-stage REAL-PRODUCTION smoke/integration test.
@@ -21,7 +22,7 @@ const path = require("node:path");
 const { createClient } = require("@supabase/supabase-js");
 const { sourceConstant } = require("../verify-production-workout-rpc.cjs");
 const { workoutPayload } = require("./tester-workout-flow.cjs");
-const { verifyAuthenticatedRpcCatalogue } = require("./verify-app-rpc-contract.cjs");
+const report = require("./production-report.cjs");
 const { verifyTesterPlanFlow } = require("./tester-plan-flow.cjs");
 
 const EXPECTED_HOST = "cpzgnhchdpkxnebjsyyi.supabase.co";
@@ -44,8 +45,10 @@ const EXTRA = { name: "extra-cardio", volume: 0, distance: 2, sets: 1,
   exercises: [{ kind: "cardio", sets: [{ time_seconds: 600, distance: 2 }] }] };
 
 function unwrap(result, label) {
-  if (result.error) throw new Error(label + ": " + result.error.message + " [" + result.error.code + "]");
-  return result.data;
+  return report.check(label, () => {
+    if (result.error) throw new Error(label + ": " + result.error.message + " [" + result.error.code + "]");
+    return result.data;
+  });
 }
 function finiteNumber(value, label) {
   assert.ok(value !== null && value !== undefined && value !== "", label + " is missing");
@@ -54,11 +57,11 @@ function finiteNumber(value, label) {
   return number;
 }
 function exact(value, expected, label) {
-  assert.equal(finiteNumber(value, label), expected, label);
+  report.check(label, () => assert.equal(finiteNumber(value, label), expected, label), { expected, actual: value });
 }
 function near(value, expected, label, epsilon = 0.001) {
-  assert.ok(Math.abs(finiteNumber(value, label) - expected) <= epsilon, label +
-    ": expected " + expected + ", got " + value);
+  report.check(label, () => assert.ok(Math.abs(finiteNumber(value, label) - expected) <= epsilon, label +
+    ": expected " + expected + ", got " + value), { expected, actual: value, tolerance: epsilon });
 }
 function assertMarker(s, state) {
   assert.ok(typeof s === "string" && s.startsWith(state.marker),
@@ -71,9 +74,21 @@ function persist(state) {
 function load() {
   if (!fs.existsSync(MANIFEST)) return null;
   const state = JSON.parse(fs.readFileSync(MANIFEST, "utf8"));
+  assert.equal(state.version, 2, "Unsupported recovery manifest version");
   assert.equal(state.userId, EXPECTED_TESTER_ID, "Manifest owner mismatch");
   assert.match(state.runId, /^[0-9a-f-]{36}$/i, "Malformed run marker");
   assert.equal(state.marker, "AUTOMATED_E2E_FIXTURE " + state.runId);
+  assert.equal(state.baseline.active_plan_id, null, "Recovery baseline must have no active plan");
+  for (const table of COUNTS) assert.equal(state.baseline[table], 0);
+  assert.equal(state.workouts.length, 4);
+  for (const [index, scenario] of [...SCENARIOS, EXTRA].entries()) {
+    const entry = state.workouts[index];
+    assert.equal(entry.name, scenario.name);
+    assert.match(entry.clientSaveId, /^[0-9a-f-]{36}$/i);
+    assert.equal(entry.notes, state.marker + "-" + scenario.name);
+  }
+  assert.equal(state.posts.length, 1);
+  assert.equal(state.posts[0].caption, state.marker + " private-workout-post");
   return state;
 }
 async function connectPublicConfig() {
@@ -143,12 +158,9 @@ function scenarioPayload(scenario, state, clientSaveId, completedAt) {
   };
 }
 async function saveFixture(client, state, scenario) {
-  const clientSaveId = crypto.randomUUID();
-  const record = { name: scenario.name, clientSaveId,
-    completedAt: new Date().toISOString(),
-    notes: state.marker + "-" + scenario.name, historyId: null };
-  state.workouts.push(record);
-  persist(state); // Persist BEFORE the RPC: cleanup can find a committed but unacknowledged write.
+  const record = state.workouts.find(x => x.name === scenario.name);
+  assert.ok(record, "Fixture must be registered in the recovery manifest before writing");
+  const clientSaveId = record.clientSaveId;
   const args = { p_workout: scenarioPayload(scenario, state, clientSaveId, record.completedAt),
     p_expected_user_id: state.userId };
   record.historyId = unwrap(await client.rpc("save_completed_workout_v2", args),
@@ -171,10 +183,10 @@ async function resolveWorkouts(client, state) {
   }
   return rows;
 }
-async function setup() {
+async function prepare() {
   // Never overwrite an incomplete previous manifest.
   assert.ok(!fs.existsSync(MANIFEST), "Existing manifest found; run cleanup first");
-  const { client, session, userId, profile, url, anonKey } = await connect();
+  const { client, userId, profile } = await connect();
   try {
     const baseline = await counts(client, userId);
     assert.deepEqual(baseline, {
@@ -182,10 +194,6 @@ async function setup() {
     }, "Tester account is not empty; refuse to touch or delete existing records");
     assert.equal(profile.active_plan_id, null, "Preexisting active plan; refusing test");
 
-    const catalogue = await verifyAuthenticatedRpcCatalogue({
-      url, anonKey, accessToken: session.session.access_token,
-      productionReadOnly: true,
-    });
     const progress = unwrap(await client.rpc("get_progress_overview"), "Empty progress");
     exact(progress.meta?.workouts_total, 0, "Empty progress count");
     const strength = unwrap(await client.from("exercises")
@@ -201,19 +209,61 @@ async function setup() {
       runId, marker: "AUTOMATED_E2E_FIXTURE " + runId, userId,
       baseline: { ...baseline, active_plan_id: profile.active_plan_id,
         weekly_workout_goal: profile.weekly_workout_goal,
-        settings: profile.settings, existingWorkoutIds: await existingWorkoutIds(client,userId),
+        settingsHash: settingsHash(profile.settings), existingWorkoutIds: await existingWorkoutIds(client,userId),
         notificationCount: await notificationCount(client,userId) },
       exerciseIds: { strength: strength[0].id, cardio: cardio[0].id },
-      workouts: [], posts: [], planId: null,
+      workouts: [], posts: [{ caption: "AUTOMATED_E2E_FIXTURE " + runId + " private-workout-post", postId: null }], planId: null,
     };
+    state.workouts = [...SCENARIOS, EXTRA].map(scenario => ({
+      name: scenario.name, clientSaveId: crypto.randomUUID(),
+      completedAt: new Date().toISOString(),
+      notes: state.marker + "-" + scenario.name, historyId: null,
+    }));
+    state.version = 2;
     persist(state);
     console.log("PRODUCTION E2E RUN ID: " + runId + " (non-secret cleanup identifier)");
-    for (const scenario of SCENARIOS) await saveFixture(client, state, scenario);
-    console.log("PASS SETUP: 3 real production workouts seeded, " +
-      catalogue.verified + " static RPC routes visible");
+    console.log("PASS PREPARE: recovery manifest ready; no fixture writes yet");
   } finally {
     await client.auth.signOut();
   }
+}
+async function setup() {
+  const state = load();
+  assert.ok(state, "Run prepare and preserve the recovery manifest before setup");
+  const { client, userId } = await connect();
+  try {
+    assert.deepEqual(await counts(client, userId), {
+      workout_history: 0, posts: 0, plans: 0, goals: 0,
+    }, "Account changed since prepare; refusing to seed");
+    for (const scenario of SCENARIOS) {
+      await report.run("seed-" + scenario.name, () => saveFixture(client, state, scenario));
+    }
+  } finally { await client.auth.signOut(); }
+}
+function settingsHash(settings) {
+  // JSONB key ordering is stable, but canonicalize explicitly for recovery across runtimes.
+  function sort(value) {
+    if (Array.isArray(value)) return value.map(sort);
+    if (value && typeof value === "object") return Object.fromEntries(
+      Object.keys(value).sort().map(key => [key, sort(value[key])]));
+    return value;
+  }
+  return crypto.createHash("sha256").update(JSON.stringify(sort(settings))).digest("hex");
+}
+async function resolvePlans(client, state) {
+  const title = "AUTOMATED_E2E_PLAN_" + state.runId;
+  let query = client.from("plans").select("id,user_id,title").eq("user_id", state.userId);
+  // The pre-write recovery artifact has no server ID. Exact titles recover even
+  // if create/edit committed but the response or runner was lost.
+  query = state.planId ? query.eq("id", state.planId) : query.in("title", [title, title + "_EDITED"]);
+  const rows = unwrap(await query, "Locate this run's original or edited plan");
+  assert.ok(rows.length <= 1, "Ambiguous run plans; refusing deletion");
+  for (const row of rows) {
+    assert.equal(row.user_id, state.userId, "Plan owner mismatch");
+    assert.ok([title, title + "_EDITED"].includes(row.title), "Plan marker mismatch");
+    if (state.planId) assert.equal(row.id, state.planId, "Plan ID mismatch");
+  }
+  return rows;
 }
 async function verifyHistory(client, state, expected = { workouts: 3, volume: 1215,
   distance: 8.2, seconds: 3000, cardioSessions: 2 }) {
@@ -301,8 +351,7 @@ async function verifyPrivatePost(client, state, workoutId) {
     p_pr_reps: null, p_pr_weight: null, p_visibility: "private",
     p_workout_history_id: workoutId,
   };
-  state.posts.push({ caption, postId: null });
-  persist(state);
+  assert.equal(state.posts[0].caption, caption, "Post must be registered before writing");
   const postId = unwrap(await client.rpc("create_post_v2", args), "Create private workout post");
   state.posts.at(-1).postId = postId;
   persist(state);
@@ -385,47 +434,52 @@ async function tests() {
   const { client, userId } = await connect();
   try {
     assert.equal(userId, state.userId);
-    await verifyHistory(client, state);
+    await report.run("analytics-initial", () => verifyHistory(client, state));
     for (const scenario of SCENARIOS) {
-      const row = state.workouts.find(x => x.name === scenario.name);
-      const args = {
-        p_workout: scenarioPayload(scenario, state, row.clientSaveId, row.completedAt),
-        p_expected_user_id: userId,
-      };
-      const second = unwrap(await client.rpc("save_completed_workout_v2", args),
-        "Idempotent " + scenario.name + " retry");
-      assert.equal(second, row.historyId, "Idempotence must preserve workout identity");
-      const detail = unwrap(await client.rpc("get_workout_history_detail", {
-        p_workout_history_id: row.historyId,
-      }), "History detail " + scenario.name);
-      exact(detail.stats?.volume_kg, scenario.volume, "Details " + scenario.name + " volume");
-      near(detail.stats?.distance_total, scenario.distance,
-        "Details " + scenario.name + " distance");
-      exact(detail.stats?.sets_count, scenario.sets, "Details " + scenario.name + " sets");
+      await report.run("retry-" + scenario.name, async () => {
+        const row = state.workouts.find(x => x.name === scenario.name);
+        const args = {
+          p_workout: scenarioPayload(scenario, state, row.clientSaveId, row.completedAt),
+          p_expected_user_id: userId,
+        };
+        const second = unwrap(await client.rpc("save_completed_workout_v2", args),
+          "Idempotent " + scenario.name + " retry");
+        assert.equal(second, row.historyId, "Idempotence must preserve workout identity");
+        const detail = unwrap(await client.rpc("get_workout_history_detail", {
+          p_workout_history_id: row.historyId,
+        }), "History detail " + scenario.name);
+        exact(detail.stats?.volume_kg, scenario.volume, "Details " + scenario.name + " volume");
+        near(detail.stats?.distance_total, scenario.distance,
+          "Details " + scenario.name + " distance");
+        exact(detail.stats?.sets_count, scenario.sets, "Details " + scenario.name + " sets");
+      });
     }
-    await verifyBadOwner(client, state);
-    await verifyPrivatePost(client, state, state.workouts[0].historyId);
-    // A private tester post must remain inaccessible without authentication.
-    const { url, anonKey } = await connectPublicConfig();
-    const anonymous = createClient(url, anonKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
+    await report.run("ownership", () => verifyBadOwner(client, state));
+    await report.run("social", () => verifyPrivatePost(client, state, state.workouts[0].historyId));
+    await report.run("privacy", async () => {
+      // A private tester post must remain inaccessible without authentication.
+      const { url, anonKey } = await connectPublicConfig();
+      const anonymous = createClient(url, anonKey, {
+        auth: { persistSession: false, autoRefreshToken: false },
+      });
+      const hidden = unwrap(await anonymous.from("posts").select("id")
+        .eq("id", state.posts[0].postId), "Check private post not exposed publicly");
+      assert.deepEqual(hidden, [], "Anonymous users must not see private test posts");
     });
-    const hidden = unwrap(await anonymous.from("posts").select("id")
-      .eq("id", state.posts[0].postId), "Check private post not exposed publicly");
-    assert.deepEqual(hidden, [], "Anonymous users must not see private test posts");
-    await saveFixture(client, state, EXTRA);
-    await verifyHistory(client, state, { workouts: 4, volume: 1215,
-      distance: 10.2, seconds: 3600, cardioSessions: 3 });
+    await report.run("extra-run", () => saveFixture(client, state, EXTRA));
+    await report.run("analytics-updated", () => verifyHistory(client, state, { workouts: 4, volume: 1215,
+      distance: 10.2, seconds: 3600, cardioSessions: 3 }));
     state.planStarted = true;
     persist(state);
-    const plan = await verifyTesterPlanFlow({
+    const plan = await report.run("plans", () => verifyTesterPlanFlow({
       userClient: client, userId,
       exerciseIds: [state.exerciseIds.strength, state.exerciseIds.cardio],
       runLabel: state.runId,
-    });
+      onPlanCreated: planId => { state.planId = planId; persist(state); },
+    }));
     state.planId = plan.planId;
     persist(state);
-    await verifyReadEndpoints(client, plan);
+    await report.run("screens", () => verifyReadEndpoints(client, plan));
     console.log("PASS TESTS: plan create/edit/goal, read APIs, exact production data and failures");
   } finally {
     await client.auth.signOut();
@@ -439,17 +493,16 @@ async function deleteExact(client, table, predicate, label) {
   const removed = unwrap(await query.select("id"), "Cleanup " + label);
   assert.equal(removed.length, 1, "Cleanup must remove exactly one " + label);
 }
-async function cleanup() {
-  const state = load();
+async function cleanup({ state = load(), connectImpl = connect, removeManifest = () => fs.unlinkSync(MANIFEST) } = {}) {
   if (!state) {
     console.log("CLEANUP: No manifest; setup wrote nothing (or never started)");
     return;
   }
-  const { client } = await connect();
+  const { client } = await connectImpl();
   const failures = [];
   const attempt = async (name, action) => {
     try {
-      await action();
+      await report.run("cleanup-" + name, action);
     } catch (error) {
       failures.push(name + ": " + error.message);
       console.error("CLEANUP STEP FAILED (" + name + "): " + error.message);
@@ -467,6 +520,7 @@ async function cleanup() {
         for (const row of rows) {
           assertMarker(row.caption, state);
           assert.equal(row.visibility, "private", "Unexpected public post; skip deletion");
+          entry.postId = row.id;
           await deleteExact(client, "posts", {
             id: row.id, user_id: state.userId,
             caption: row.caption, visibility: "private",
@@ -478,9 +532,7 @@ async function cleanup() {
     await attempt("restore active plan", async () => {
       const profile = unwrap(await client.from("profiles")
         .select("active_plan_id").eq("id",state.userId).single(),"Read active plan");
-      const plans = unwrap(await client.from("plans")
-        .select("id,user_id,title").eq("user_id", state.userId)
-        .eq("title", "AUTOMATED_E2E_PLAN_" + state.runId), "Find run-tagged plans");
+      const plans = await resolvePlans(client, state);
       if (profile.active_plan_id) {
         assert.ok(plans.some(x => x.id === profile.active_plan_id),
           "Active plan is not this run's plan; do not overwrite it");
@@ -501,15 +553,13 @@ async function cleanup() {
       for (const clone of clones) {
         assert.ok(clone.title.endsWith(tag), "Unexpected workout title; skip deletion");
         await deleteExact(client, "workouts", {
-          id: clone.id, user_id: state.userId, created_source: "plan_clone",
+          id: clone.id, user_id: state.userId, created_source: "plan_clone", title: clone.title,
         }, "plan clone");
       }
     });
 
     await attempt("plans and cascaded goals", async () => {
-      const plans = unwrap(await client.from("plans")
-        .select("id,user_id,title").eq("user_id", state.userId)
-        .eq("title", "AUTOMATED_E2E_PLAN_" + state.runId), "Find run-tagged plan");
+      const plans = await resolvePlans(client, state);
       for (const plan of plans) {
         await deleteExact(client, "plans", {
           id: plan.id, user_id: state.userId, title: plan.title,
@@ -542,7 +592,7 @@ async function cleanup() {
         .eq("id", state.userId).single(), "Verify profile restored");
       assert.equal(finalProfile.active_plan_id, state.baseline.active_plan_id);
       assert.equal(finalProfile.weekly_workout_goal, state.baseline.weekly_workout_goal);
-      assert.deepEqual(finalProfile.settings, state.baseline.settings);
+      assert.equal(settingsHash(finalProfile.settings), state.baseline.settingsHash, "Profile settings changed");
       assert.equal(await notificationCount(client, state.userId),
         state.baseline.notificationCount, "Unexpected notification side effects");
       for (const post of state.posts.filter(x => x.postId)) {
@@ -558,24 +608,24 @@ async function cleanup() {
     if (failures.length) {
       throw new Error(failures.join("; "));
     }
-    fs.unlinkSync(MANIFEST);
+    removeManifest();
   } finally {
     await client.auth.signOut();
   }
 }
 
-const stages = { setup, test: tests, cleanup };
+const stages = { prepare, setup, test: tests, cleanup };
 if (require.main === module) {
   const stage = process.argv[2];
   if (!stages[stage]) {
-    console.error("Usage: node scripts/e2e/production-known-history.cjs setup|test|cleanup");
+    console.error("Usage: node scripts/e2e/production-known-history.cjs prepare|setup|test|cleanup");
     process.exitCode = 2;
   } else {
-    stages[stage]().catch(e => {
+    report.run(stage, () => stages[stage]()).catch(e => {
       console.error(stage.toUpperCase() + " FAILED: " + e.message);
       process.exitCode = 1;
     });
   }
 }
 
-module.exports = { stages, finiteNumber, exact, near, SCENARIOS, EXTRA };
+module.exports = { stages, finiteNumber, exact, near, SCENARIOS, EXTRA, resolvePlans, resolveWorkouts, settingsHash, load };

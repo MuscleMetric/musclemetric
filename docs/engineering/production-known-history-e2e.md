@@ -1,84 +1,118 @@
-# Production known-history E2E — three stages
+# Production known-history tests and Allure reports
 
-## Release control
+## First preview — no production writes
 
-The new workflow runs only by manual dispatch until the repository Actions variable
-ENABLE_PRODUCTION_FULL_E2E=true is explicitly enabled. Then it is scheduled at
-04:13 UTC. It shares a concurrency lock with the existing 03:17 UTC live
-production smoke test, which remains unchanged.
+Open PR #60 → Checks → **Allure preview and recovery regression tests** → Details.
+On the workflow summary, download **allure-preview-no-production-<run ID>**.
+Unzip and open `index.html` in a browser. This standalone Allure report contains
+SIMULATED passing, failing and skipped results. The deliberate distance failure
+shows expected 8.2 km versus actual 5 km; it is not evidence of a production bug.
+The preview job passes if regression tests and report generation succeed.
 
-No migrations, schema changes, service-role keys or admin endpoints are used.
-Both workflows use the existing tester's ordinary Auth email/password secrets.
+## First real run
 
-## Stage 1 — Setup
+Wait for PR checks to pass and review/merge the PR yourself. The assistant must
+not merge it. A new workflow must be present on the default branch before its
+manual dispatch button is available.
 
-Authenticate to the exact MuscleMetric production project and known tester ID.
-Refuse to write when the user has any previous workout history, posts, plans,
-goals or active plan. Snapshot their settings, weekly goal, notification count
-and existing template IDs. Audit static app RPC availability.
+GitHub → Actions → **Production deterministic history E2E** → Run workflow →
+branch `main`. Leave **recovery_run_id blank** for a normal run. Leave the
+`ENABLE_PRODUCTION_FULL_E2E` repository variable disabled until a supervised
+run has passed both validation and final cleanup verification.
 
-Persist a random UUID run ID and a list of intended client_save_id values to
-an on-runner manifest **before** calling workout-save RPCs, allowing recovery
-from successful commits with lost responses.
+The workflow requires the existing E2E_TESTER_EMAIL / E2E_TESTER_PASSWORD
+secrets. It locks the exact production hostname, tester ID and username, uses
+ordinary authenticated calls, and shares the existing live tester concurrency
+lock. No migrations or service-role credentials are used. Scheduling, when
+explicitly enabled, is 04:13 UTC daily (UK time changes with daylight saving).
 
-Seed three workouts through the real save_completed_workout_v2 endpoint:
-- Strength: 100 kg × 5 and 105 kg × 3 = 815 kg volume.
-- Cardio: 5 km in 1800 seconds.
-- Mixed: 50 kg × 8 and 3.2 km in 1200 seconds = 400 kg volume.
+## What runs
 
-Expected: 3 sessions, 5 sets, 1215 kg volume, 8.2 km distance and 3000 s cardio.
+1. **Prepare, before writes:** require empty tester history/posts/plans/goals
+   and no active plan; snapshot baseline counts, template IDs, weekly goal,
+   notification count and a hash of settings. Pre-register all four workout
+   client-save IDs and the private post caption. Upload a minimal recovery
+   artifact before seeding. If upload fails, seeding cannot start.
+2. **Setup:** save strength (815 kg), cardio (5 km / 1800 s), and mixed
+   (400 kg + 3.2 km / 1200 s) workouts through save_completed_workout_v2.
+3. **Checks:** independently verify stored rows and home/progress/history/
+   cardio analytics totals; retry saves; reject forged ownership; create a
+   private workout post, check snapshot/detail/comment/like/unlike and invalid
+   linked-workout rejection; verify anonymous invisibility; save a fourth
+   2 km / 600 s run; create/edit a plan and goal; read seven screen APIs.
+4. **Cleanup:** always attempt each cleanup category independently, resolve
+   plans by recorded ID plus owner/marker or both exact original/edited
+   titles, delete only this run's data, restore its active-plan reference and
+   verify the original baseline. Capture a created plan ID immediately, before
+   subsequent reads/assertions can fail. Recovery also handles a committed
+   create/edit whose response was lost.
 
-## Stage 2 — Tests
+Production no longer requests the privileged PostgREST OpenAPI catalogue.
+The local disposable database audit remains separate. These are representative
+API tests, not iPhone UI automation, cross-user privacy certification, or
+exhaustive testing of all RPCs/Edge Functions.
 
-Independently query live workout history, exercise history and set-history
-tables as the tester. Calculate the expected totals and verify exact values
-returned by progress, home, history feed/detail and deep cardio analytics.
+## Reading the real report
 
-Retry original save payloads and require the same workout IDs. Reject forged
-user ownership and confirm that the denied call created no rows.
+Open the completed run's Summary and use **Download Allure report** (artifact
+`production-allure-report-<run ID>-<attempt>`). Unzip, find `index.html` and open
+it directly. The report groups Setup, Workout saving, Analytics, Social, Plans,
+Screen APIs and Cleanup. Expand a failed check for the exact assertion and
+numeric expected/actual values. Successful API reads appear as steps.
 
-Use create_post_v2 to make one uniquely tagged PRIVATE workout post. Verify its
-workout snapshot, details and own-post list; add a comment, like/unlike it, and
-confirm an invalid linked workout is rejected with no write.
+- **Passed:** that check completed successfully.
+- **Failed:** an assertion did not match the expectation.
+- **Broken:** a request/runtime error or interrupted execution prevented completion.
+- **Skipped:** not executed after an earlier failure or during cleanup-only recovery.
 
-Save another 2 km/600-second run and verify changed totals: 4 sessions,
-1215 kg, 10.2 km, 3600 seconds and 3 cardio sessions.
+The overall sequence and its individual checks are both listed; the count is
+not a count of distinct app features. Cleanup is independently reported and any
+cleanup failure still fails the workflow. A reporting failure also fails its
+step, and never changes a failed test to success. A skipped or missing cleanup
+verification is NOT proof that the account is clean.
 
-Create and edit a run-tagged plan with workouts/goals, reject forged ownership,
-and verify authenticated read endpoints for home, progress, workout list,
-profile, settings, exercise picker and plan session bootstrap.
+The summary is readable without Allure. Reports are downloadable artifacts,
+not a hosted public dashboard, and expire after 14 days. Report messages redact
+known secrets, emails, UUIDs and JWTs; no response bodies or recovery manifests
+are attached to the report. No historical trend persistence is configured yet.
 
-These are representative business tests, not blanket execution of every
-database function or Edge Function.
+## Recovery after a failed or killed runner
 
-## Stage 3 — Cleanup
+1. Do not start another normal test over leftovers. Locate the **original**
+   run ID in its Actions URL and attempt number on its run page.
+2. Verify the original run has stopped. Run the same workflow on `main`, set
+   `recovery_run_id` to that numeric run ID and `recovery_attempt` to its attempt
+   (usually 1). This validates the source workflow, downloads its pre-write
+   record and runs **cleanup only**. It never seeds or runs feature tests.
+3. Check **Cleanup → Verify original account state was restored** and the
+   workflow conclusion. If green, a fresh normal test is safe. Recovery is
+   repeatable using the same original artifact; never reset the tester wholesale.
+4. If recovery fails, inspect the specific category before retrying. Changed
+   ownership/markers, unrelated active plans or baseline changes require manual
+   investigation and are intentionally not overwritten.
 
-Always execute the cleanup step even if Setup or Tests fail.
+The `production-recovery-<run ID>-<attempt>` artifact is retained for 30 days.
+It contains tester/template IDs, fixture markers, baseline counts/weekly goal
+and a settings hash; no passwords, JWTs or raw settings. Anyone permitted to
+read Actions artifacts can read it. It is separate from the Allure report.
+Download it before expiry if recovery remains unresolved. If unavailable,
+stop and investigate using the run UUID from the Prepare log; there is no
+broad-delete fallback. Older runs without a version-2 recovery record need
+manual investigation.
 
-Delete only run-tagged private posts, post children, plan clones, plans and
-goal children, workout-history rows and their history children.
+Uploading **before** writes protects against abrupt loss of the runner. No
+workflow can guarantee final reporting/cleanup after forcible termination;
+recovery from the saved record is the supported route.
 
-Resolve workouts by previously registered client_save_id and exact notes.
-Resolve posts by exact private caption, plans by run-specific title, and
-clones by their run-specific title suffix. Never delete unrelated test-account
-history or the existing workout template.
+## Local verification without production access
 
-Restore active_plan_id only if it refers to the current run's plan. Validate
-that the profile settings, weekly goal, notification count, template IDs and
-workout/post/plan/goal counts equal the initial snapshot. Fail on mismatch.
+```bash
+npm ci
+npm run test:ci -- __tests__/scripts/productionKnownHistory.test.js __tests__/scripts/productionRecovery.test.js __tests__/scripts/productionReport.test.js
+npm ci --prefix tools/allure --ignore-scripts
+MM_ALLURE_RESULTS=ci-artifacts/allure-results node scripts/e2e/production-report-preview.cjs
+MM_REPORT_PREVIEW=true tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/allure-results
+```
 
-If a CI runner is forcibly terminated, cleanup may not complete. The next
-run refuses to seed over leftover records; investigate any failure and
-recover using the run UUID recorded in the Setup log.
-
-## Safeguards and activation
-
-The production write workflow does not run in pull_request CI.
-After the user has reviewed and merged the PR themselves, dispatch a manual
-run first. Verify the Cleanup stage is green before enabling the separate
-ENABLE_PRODUCTION_FULL_E2E repository variable for unattended daily runs.
-
-The existing narrower live production smoke test and disposable local CI tests
-remain independent. This is real production API-level E2E, not iPhone
-simulator-based UI automation. Eight dynamic RPC callsites, Edge Functions,
-public social visibility and many other failure paths remain for later work.
+Use a fresh results directory for each run. The report generator is pinned and
+locked in tools/allure to keep it outside the mobile app dependency graph.

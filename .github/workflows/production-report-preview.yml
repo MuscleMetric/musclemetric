@@ -1,0 +1,51 @@
+name: Production report preview (no production access)
+on:
+  pull_request:
+    paths:
+      - 'scripts/e2e/**'
+      - '__tests__/scripts/**'
+      - 'tools/allure/**'
+      - '.github/workflows/production*'
+permissions:
+  contents: read
+jobs:
+  report:
+    name: Allure preview and recovery regression tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MM_ALLURE_RESULTS: ci-artifacts/allure-results
+      MM_REPORT_PREVIEW: 'true'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/allure/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix tools/allure --ignore-scripts
+      - name: Verify cleanup and report regression tests
+        run: npm run test:ci -- __tests__/scripts/productionKnownHistory.test.js __tests__/scripts/productionRecovery.test.js __tests__/scripts/productionReport.test.js
+      - name: Create simulated pass, failure and skipped results
+        if: always()
+        run: node scripts/e2e/production-report-preview.cjs
+      - name: Generate standalone preview
+        if: always()
+        run: tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/allure-results
+      - name: Upload simulated report
+        if: always()
+        id: report
+        uses: actions/upload-artifact@v7
+        with:
+          name: allure-preview-no-production-${{ github.run_id }}
+          path: ci-artifacts/allure-report/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Link preview download
+        if: ${{ always() && steps.report.outputs.artifact-url != '' }}
+        env:
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: printf '\n[Download SIMULATED Allure preview](%s) — unzip and open index.html.\n' "$REPORT_URL" >> "$GITHUB_STEP_SUMMARY"

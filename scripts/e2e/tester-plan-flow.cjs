@@ -2,8 +2,8 @@
 
 /**
  * End-to-end plan create/edit/ownership tests run only with a disposable
- * local Supabase user. This function must never be imported by the production
- * tester job: creating a plan changes active_plan_id and weekly targets.
+ * local Supabase user, or the locked production tester with a pre-write
+ * recovery manifest and run-specific markers. Creating a plan activates it.
  */
 const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
@@ -15,7 +15,7 @@ function unwrap(response, label) {
   return response.data;
 }
 
-async function verifyTesterPlanFlow({ userClient, userId, exerciseIds, runLabel = null }) {
+async function verifyTesterPlanFlow({ userClient, userId, exerciseIds, runLabel = null, onPlanCreated = () => {} }) {
   const [strengthId, cardioId] = exerciseIds;
   const title = "AUTOMATED_E2E_PLAN_" + (runLabel || randomUUID());
   const suffix = runLabel ? " [E2E_" + runLabel + "]" : "";
@@ -43,6 +43,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds, runLabel 
   const planId = unwrap(await userClient.rpc("create_plan_v1", createArgs),
     "Create full plan through authenticated RPC");
   assert.match(planId, /^[0-9a-f-]{36}$/i);
+  await onPlanCreated(planId); // Persist identity before any read/assertion/edit can fail.
 
   const plan = unwrap(await userClient.from("plans").select("id,title,end_date,weekly_target_sessions")
     .eq("id",planId).eq("user_id",userId).single(), "Read created plan");
