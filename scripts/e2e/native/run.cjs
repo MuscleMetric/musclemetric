@@ -8,7 +8,7 @@ const {connect,load,USER}=require('./fixtures.cjs');
 const fixtures=load();
 const secrets=[process.env.E2E_TESTER_EMAIL,process.env.E2E_TESTER_PASSWORD].filter(Boolean);
 function scrub(s){for(const secret of secrets)s=s.split(secret).join('[REDACTED]');return base.sanitize(s);}
-function command(cmd,args,timeout=300000){const r=spawnSync(cmd,args,{encoding:'utf8',timeout,maxBuffer:16*1024*1024});if(r.status!==0)throw Error(scrub((r.stdout||'')+'\n'+(r.stderr||'')+'\n'+(r.error?.message||cmd+' exited '+r.status)));return r.stdout;}
+function command(cmd,args,timeout=300000){const r=spawnSync('python3',['scripts/e2e/native/bounded-command.py',String(timeout/1000),cmd,...args],{encoding:'utf8',timeout:timeout+10000,killSignal:'SIGKILL',maxBuffer:16*1024*1024});if(r.status!==0)throw Error(scrub((r.stdout||'')+'\n'+(r.stderr||'')+'\n'+(r.error?.message||cmd+' exited '+r.status)));return r.stdout;}
 function screenshots(dir,out=[]) {if(!fs.existsSync(dir))return out;for(const entry of fs.readdirSync(dir,{withFileTypes:true})){const p=path.join(dir,entry.name);if(entry.isDirectory())screenshots(p,out);else if(p.endsWith('.png'))out.push(p);}return out;}
 let phase=0;
 function flow(file,account,extra={}) {
@@ -17,7 +17,9 @@ function flow(file,account,extra={}) {
   const args=['test','--format','junit','--output',dir+'/report.xml','--test-output-dir',dir];
   for(const [k,v] of Object.entries(env))args.push('-e',k+'='+v);
   args.push('.maestro/'+file+'.yaml');
+  console.log(new Date().toISOString()+' START '+file+' (5 minute limit)');
   command('maestro',args);
+  console.log(new Date().toISOString()+' FINISHED '+file);
   command('python3',['scripts/e2e/native/junit.py',dir+'/report.xml']);
 }
 async function verifyWorkout(account,client) {
@@ -58,6 +60,7 @@ async function main(){
   for(let n=startPhase+1;n<=phase;n++) for(const p of screenshots('ci-artifacts/native/phase-'+n)) {
    const source=id+'-'+attachments.length+'.png';fs.copyFileSync(p,path.join(process.env.MM_ALLURE_RESULTS,source));attachments.push({name:'Native screen '+attachments.length,source,type:'image/png'});
   }
+  console.log(new Date().toISOString()+' RESULT '+id+': '+(error?'failed':'passed'));
   write(id,error?'failed':'passed',error?scrub(error.message):undefined,error?scrub(error.stack):undefined,attachments,start);
  }
  write('Signed-in stranger privacy','skipped','Not executed: only one tester login is configured. Owner visibility does not prove cross-account privacy.');

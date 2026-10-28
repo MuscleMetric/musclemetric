@@ -71,3 +71,15 @@ it('recovery manifest rejects another account, baseline data and foreign weekly 
  const result=spawnSync(process.execPath,['-e',script],{encoding:'utf8'});
  expect(result.stderr).toBe('');expect(result.status).toBe(0);
 });
+it('hard timeout stops a command that ignores normal termination',()=>{
+ const start=Date.now();
+ const result=spawnSync('python3',['scripts/e2e/native/bounded-command.py','0.3','python3','-c',
+  'import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)'],{encoding:'utf8',timeout:5000});
+ expect(result.status).toBe(124);
+ expect(result.stderr).toContain('terminating process group');
+ expect(Date.now()-start).toBeLessThan(4000);
+});
+it('bounded command preserves an ordinary failure exit code',()=>{
+ const result=spawnSync('python3',['scripts/e2e/native/bounded-command.py','2','python3','-c','raise SystemExit(7)']);
+ expect(result.status).toBe(7);
+});
