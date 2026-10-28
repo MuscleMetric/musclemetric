@@ -323,9 +323,7 @@ export default function SearchScreen() {
 
       // 2) fetch profiles for those ids (RLS will restrict as needed)
       const pr = await supabase
-        .from("profiles")
-        .select("id, name, username")
-        .in("id", ids);
+        .rpc("get_social_identities_v1", { p_user_ids: ids });
 
       if (pr.error) {
         log("profiles read error:", pr.error);

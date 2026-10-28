@@ -27,13 +27,11 @@ export async function getProfileConnections(
     if (ids.length === 0) return [];
 
     const { data: profiles, error: profilesError } = await supabase
-      .from("profiles")
-      .select("id, name, username")
-      .in("id", ids);
+      .rpc("get_social_identities_v1", { p_user_ids: ids });
 
     if (profilesError) throw profilesError;
 
-    const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+    const byId = new Map(((profiles ?? []) as ProfileConnectionRow[]).map((p) => [p.id, p]));
     return ids
       .map((id) => byId.get(id))
       .filter(Boolean)
@@ -56,13 +54,11 @@ export async function getProfileConnections(
   if (ids.length === 0) return [];
 
   const { data: profiles, error: profilesError } = await supabase
-    .from("profiles")
-    .select("id, name, username")
-    .in("id", ids);
+    .rpc("get_social_identities_v1", { p_user_ids: ids });
 
   if (profilesError) throw profilesError;
 
-  const byId = new Map((profiles ?? []).map((p) => [p.id, p]));
+  const byId = new Map(((profiles ?? []) as ProfileConnectionRow[]).map((p) => [p.id, p]));
   return ids
     .map((id) => byId.get(id))
     .filter(Boolean)
