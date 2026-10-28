@@ -20,6 +20,8 @@ import { supabase } from "../../lib/supabase";
 import { useAppTheme } from "../../lib/useAppTheme";
 import { useAuth } from "../../lib/authContext";
 
+import { NativeTestLogin } from "@/components/testing/NativeTestLogin";
+
 WebBrowser.maybeCompleteAuthSession();
 
 type LoadingProvider = "google" | "apple" | null;
@@ -214,6 +216,8 @@ export default function AuthIndex() {
         <Text style={styles.subtitle}>
           Continue with Apple or Google to create or access your account.
         </Text>
+
+        <NativeTestLogin />
 
         {Platform.OS === "ios" && appleAvailable && (
           <View style={styles.appleWrap}>

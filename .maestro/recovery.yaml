@@ -1,0 +1,9 @@
+appId: com.musclemetric.app.e2e
+name: Recovery - prepare an autosaved workout
+---
+- runFlow: helpers/login.yaml
+- runFlow: helpers/log-set.yaml
+- tapOn:
+    id: live-header-minimize
+- assertVisible: Workout
+- stopApp

@@ -75,6 +75,7 @@ export function StrengthInputs(props: {
               }}
             >
               <TextInput
+                testID="set-weight"
                 ref={props.weightRef}
                 value={props.weightText}
                 onChangeText={props.onChangeWeightText}
@@ -178,6 +179,7 @@ export function StrengthInputs(props: {
           }}
         >
           <TextInput
+            testID="set-reps"
             ref={props.repsRef}
             value={props.repsText}
             onChangeText={props.onChangeRepsText}
