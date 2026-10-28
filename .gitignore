@@ -11,5 +11,3 @@ ci-artifacts/
 allure-results/
 allure-report/
 
-# Generated local native automation build
-android/

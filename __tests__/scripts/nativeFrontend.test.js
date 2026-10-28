@@ -16,14 +16,14 @@ it('native app configuration refuses production and separates the test package',
  const oldFlag=process.env.EXPO_PUBLIC_NATIVE_E2E,oldUrl=process.env.EXPO_PUBLIC_SUPABASE_URL;
  try {
   delete process.env.EXPO_PUBLIC_NATIVE_E2E;
-  expect(config().android.package).toBe('com.musclemetric.app');
+  expect(config().ios.bundleIdentifier).toBe('com.musclemetric.app');
   process.env.EXPO_PUBLIC_NATIVE_E2E='true';
   delete process.env.EXPO_PUBLIC_SUPABASE_URL;
   expect(()=>config()).toThrow('local Supabase');
   process.env.EXPO_PUBLIC_SUPABASE_URL='https://production.supabase.co';
   expect(()=>config()).toThrow('local Supabase');
-  process.env.EXPO_PUBLIC_SUPABASE_URL='http://10.0.2.2:54321';
-  expect(config().android.package).toBe('com.musclemetric.app.e2e');
+  process.env.EXPO_PUBLIC_SUPABASE_URL='http://127.0.0.1:54321';
+  expect(config().ios.bundleIdentifier).toBe('com.musclemetric.app.e2e');
  }finally{
   if(oldFlag===undefined)delete process.env.EXPO_PUBLIC_NATIVE_E2E;else process.env.EXPO_PUBLIC_NATIVE_E2E=oldFlag;
   if(oldUrl===undefined)delete process.env.EXPO_PUBLIC_SUPABASE_URL;else process.env.EXPO_PUBLIC_SUPABASE_URL=oldUrl;
@@ -39,4 +39,11 @@ it('missing native executions become skipped plus a broken suite, never green',(
   expect(rows.filter(r=>r.status==='broken')).toHaveLength(1);
   expect(rows.some(r=>r.status==='passed')).toBe(false);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+it('iOS proxy refuses production and arbitrary destinations',()=>{
+ const {target}=require('../../scripts/e2e/native/proxy.cjs');
+ expect(()=>target('cpzgnhchdpkxnebjsyyi')).toThrow('non-production');
+ expect(()=>target('localhost:54321')).toThrow();
+ expect(()=>target('')).toThrow();
+ expect(target('abcdefghijklmnopqrst')).toBe('https://abcdefghijklmnopqrst.supabase.co');
 });

@@ -40,11 +40,10 @@ async function main(){
     equal(data(await ctx.admin.from('plans').select('title').eq('id',plan.id).single(),'Read edited plan').title,'Maestro Plan Edited','UI edit persisted');
    }
    if(id==='recovery') {
-    // Interrupt only this job's disposable API, keeping its database intact.
-    const project=fs.readFileSync('supabase/config.toml','utf8').match(/^project_id\s*=\s*"([\w-]+)"/m)[1];
-    const container='supabase_kong_'+project;
-    try {command('docker',['stop',container]);flow('helpers/recover-offline',a);}
-    finally {command('docker',['start',container]);}
+    // Toggle only the simulator's loopback proxy, never the hosted database.
+    const marker='ci-artifacts/native/offline';
+    try {fs.writeFileSync(marker,'offline');flow('helpers/recover-offline',a);}
+    finally {fs.rmSync(marker,{force:true});}
     for(let i=0;i<30;i++){try{const r=await fetch(process.env.API_URL+'/auth/v1/health',{headers:{apikey:process.env.ANON_KEY}});if(r.ok)break;}catch { /* Wait for the disposable API to restart. */ } await new Promise(r=>setTimeout(r,1000));}
     flow('helpers/save',a);await verifyWorkout(a);
    }

@@ -10,7 +10,7 @@ const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
 // An automation build must never silently fall back to the production project.
 if (process.env.EXPO_PUBLIC_NATIVE_E2E === "true") {
   const target = new URL(SUPABASE_URL);
-  if (target.protocol !== "http:" || !["127.0.0.1", "localhost", "10.0.2.2"].includes(target.hostname)) {
+  if (target.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(target.hostname)) {
     throw new Error("Native E2E builds require disposable local Supabase");
   }
 }

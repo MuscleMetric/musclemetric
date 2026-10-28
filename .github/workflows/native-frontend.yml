@@ -1,6 +1,11 @@
-name: Native frontend E2E (Maestro)
+name: iOS frontend E2E (Maestro)
 on:
   workflow_call:
+    secrets:
+      NATIVE_E2E_ANON_KEY:
+        required: false
+      NATIVE_E2E_SERVICE_ROLE_KEY:
+        required: false
   workflow_dispatch:
   pull_request:
     paths:
@@ -11,17 +16,22 @@ on:
       - '.github/workflows/native-frontend.yml'
 permissions:
   contents: read
+concurrency:
+  group: native-ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   native:
-    name: Android user journeys and Allure
-    runs-on: ubuntu-latest
+    name: iPhone simulator journeys and Allure
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       EXPO_PUBLIC_NATIVE_E2E: 'true'
-      EXPO_PUBLIC_SUPABASE_URL: http://10.0.2.2:54321
+      EXPO_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: native-test-proxy
       MM_ALLURE_RESULTS: ci-artifacts/native-results
       MAESTRO_CLI_NO_ANALYTICS: 'true'
       CI: '1'
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,56 +42,57 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
-        with:
-          packages: platform-tools
-      - uses: supabase/setup-cli@v3
-        with:
-          version: 2.119.0
       - run: npm ci
-      - name: Start disposable database and expose only its public key to the app
+      - name: Prepare isolated iOS Simulator bundle
+        run: python3 scripts/e2e/native/prepare-ios.py
+      - name: Install iOS pods
+        working-directory: ios
+        run: pod install
+      - name: Build standalone iOS Simulator app
         run: |
-          supabase start
-          supabase db reset
-          set -a
-          source <(supabase status -o env)
-          set +a
-          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
-          node scripts/e2e/native/fixtures.cjs
-      - name: Generate Android automation app
-        run: npx expo prebuild --platform android --no-install
-      - name: Allow HTTP only in the generated local test app
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          p=Path('android/app/src/main/AndroidManifest.xml')
-          s=p.read_text().replace('<application ', '<application android:usesCleartextTraffic="true" ', 1)
-          p.write_text(s)
-          PY
-      - name: Build standalone Android APK
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g
+          set -o pipefail
+          xcodebuild -workspace ios/MuscleMetric.xcworkspace -scheme MuscleMetric -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/ios-build" CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO | tee "$RUNNER_TEMP/ios-build.log"
       - name: Install pinned Maestro CLI
         run: |
           curl -fsSL https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.12.0/maestro.zip -o /tmp/maestro.zip
           unzip -q /tmp/maestro.zip -d "$RUNNER_TEMP/maestro"
           echo "$RUNNER_TEMP/maestro/maestro/bin" >> "$GITHUB_PATH"
-      - name: Enable emulator acceleration
+      - name: Boot iPhone simulator and install app
         run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Execute six native journeys
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 35
-          arch: x86_64
-          profile: pixel_6
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: |
-            adb install android/app/build/outputs/apk/release/app-release.apk
-            bash scripts/e2e/native/run.sh
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/devices.json"
+          SIMULATOR_ID=$(python3 -c 'import json,os; d=json.load(open(os.environ["RUNNER_TEMP"]+"/devices.json")); print(next(x["udid"] for key,rows in d["devices"].items() if "iOS" in key for x in rows if "iPhone" in x["name"]))')
+          echo "SIMULATOR_ID=$SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$SIMULATOR_ID"
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/MuscleMetric.app"
+      - name: Seed isolated test branch and execute six iOS journeys
+        env:
+          NATIVE_E2E_PROJECT_REF: ${{ vars.NATIVE_E2E_PROJECT_REF }}
+          NATIVE_E2E_ANON_KEY: ${{ secrets.NATIVE_E2E_ANON_KEY }}
+          SERVICE_ROLE_KEY: ${{ secrets.NATIVE_E2E_SERVICE_ROLE_KEY }}
+          ANON_KEY: ${{ secrets.NATIVE_E2E_ANON_KEY }}
+          API_URL: http://127.0.0.1:54321
+        run: |
+          set -euo pipefail
+          node -e 'require("./scripts/e2e/native/proxy.cjs").target(process.env.NATIVE_E2E_PROJECT_REF); if(!process.env.NATIVE_E2E_ANON_KEY || !process.env.SERVICE_ROLE_KEY) throw Error("Configure native test branch credentials in GitHub Actions")'
+          mkdir -p ci-artifacts/native
+          node scripts/e2e/native/proxy.cjs &
+          PROXY_PID=$!
+          finish() {
+            status=$?
+            set +e
+            node scripts/e2e/native/cleanup.cjs
+            cleanup_status=$?
+            kill "$PROXY_PID" 2>/dev/null
+            if [ "$status" -ne 0 ]; then exit "$status"; else exit "$cleanup_status"; fi
+          }
+          trap finish EXIT
+          for attempt in {1..30}; do
+            if curl --silent --fail http://127.0.0.1:54321/auth/v1/health >/dev/null; then break; fi
+            sleep 1
+          done
+          node scripts/e2e/native/fixtures.cjs
+          bash scripts/e2e/native/run.sh
       - name: Record missing or interrupted native tests
         if: always()
         run: node scripts/e2e/native/report.cjs
@@ -105,8 +116,6 @@ jobs:
           path: ci-artifacts/allure-report/
           if-no-files-found: error
           retention-days: 14
-      - name: Destroy disposable database and test credentials
-        if: always()
-        run: |
-          if command -v supabase >/dev/null; then supabase stop --no-backup; fi
-          rm -f ci-artifacts/native/fixtures.json
+      - name: Shut down simulator
+        if: ${{ always() && env.SIMULATOR_ID != '' }}
+        run: xcrun simctl shutdown "$SIMULATOR_ID"

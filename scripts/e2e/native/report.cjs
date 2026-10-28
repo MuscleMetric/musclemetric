@@ -4,7 +4,7 @@ const path=require('node:path');
 const report=require('../production-report.cjs');
 const cases={auth:'Authentication: session restore, rejected credentials and logout',workout:'Workout: enter sets, save and verify history',progress:'Progress: known cardio totals on screen',plans:'Plans: create, edit and reopen',recovery:'Recovery: relaunch offline and save after reconnection',social:'Social privacy: owner and stranger views'};
 function write(id,status,message,log,attachments=[],start=Date.now()) {
-  const row=report.record('native/'+id,{parentSuite:'Native frontend — Android',suite:cases[id]?'First user journeys':'Workflow',name:cases[id]||id,status,message,log,start,stop:Date.now()});
+  const row=report.record('native/'+id,{parentSuite:'Native frontend — iOS',suite:cases[id]?'First user journeys':'Workflow',name:cases[id]||id,status,message,log,start,stop:Date.now()});
   if(attachments.length) {
     row.attachments=[...(row.attachments||[]),...attachments];
     fs.writeFileSync(path.join(process.env.MM_ALLURE_RESULTS,row.uuid+'-result.json'),JSON.stringify(row));
