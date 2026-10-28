@@ -28,11 +28,12 @@ env:
 
 jobs:
   native_frontend:
+    needs: production_reference
     if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
     uses: ./.github/workflows/native-frontend.yml
     secrets:
-      NATIVE_E2E_ANON_KEY: ${{ secrets.NATIVE_E2E_ANON_KEY }}
-      NATIVE_E2E_SERVICE_ROLE_KEY: ${{ secrets.NATIVE_E2E_SERVICE_ROLE_KEY }}
+      E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+      E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
   database_regressions:
     if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
     uses: ./.github/workflows/backend-regressions.yml

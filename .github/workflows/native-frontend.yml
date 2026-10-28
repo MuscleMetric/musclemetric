@@ -2,11 +2,20 @@ name: iOS frontend E2E (Maestro)
 on:
   workflow_call:
     secrets:
-      NATIVE_E2E_ANON_KEY:
+      E2E_TESTER_EMAIL:
         required: false
-      NATIVE_E2E_SERVICE_ROLE_KEY:
+      E2E_TESTER_PASSWORD:
         required: false
   workflow_dispatch:
+    inputs:
+      recovery_run_id:
+        description: 'Cleanup only: completed native workflow run ID (leave empty for tests)'
+        type: string
+        default: ''
+      recovery_run_attempt:
+        description: 'Recovery source attempt'
+        type: string
+        default: '1'
   pull_request:
     paths:
       - '.maestro/**'
@@ -16,11 +25,13 @@ on:
       - '.github/workflows/native-frontend.yml'
 permissions:
   contents: read
-concurrency:
-  group: native-ios-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  actions: read
 jobs:
   native:
+    if: ${{ inputs.recovery_run_id == '' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+    concurrency:
+      group: ${{ github.workflow == 'Production deterministic history E2E' && format('native-combined-{0}', github.run_id) || 'live-tester-workout-e2e' }}
+      cancel-in-progress: false
     name: iPhone simulator journeys and Allure
     runs-on: macos-15
     timeout-minutes: 60
@@ -31,6 +42,7 @@ jobs:
       MM_ALLURE_RESULTS: ci-artifacts/native-results
       MAESTRO_CLI_NO_ANALYTICS: 'true'
       CI: '1'
+      TZ: UTC
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
     steps:
       - uses: actions/checkout@v7
@@ -65,34 +77,41 @@ jobs:
           xcrun simctl boot "$SIMULATOR_ID"
           xcrun simctl bootstatus "$SIMULATOR_ID" -b
           xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/ios-build/Build/Products/Release-iphonesimulator/MuscleMetric.app"
-      - name: Seed isolated test branch and execute six iOS journeys
+      - name: Verify production tester and prepare recovery manifest (read only)
         env:
-          NATIVE_E2E_PROJECT_REF: ${{ vars.NATIVE_E2E_PROJECT_REF }}
-          NATIVE_E2E_ANON_KEY: ${{ secrets.NATIVE_E2E_ANON_KEY }}
-          SERVICE_ROLE_KEY: ${{ secrets.NATIVE_E2E_SERVICE_ROLE_KEY }}
-          ANON_KEY: ${{ secrets.NATIVE_E2E_ANON_KEY }}
-          API_URL: http://127.0.0.1:54321
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/native/fixtures.cjs prepare
+      - name: Persist recovery manifest before any production writes
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/native/fixtures.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Seed tester fixtures and execute six iOS journeys
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
         run: |
           set -euo pipefail
-          node -e 'require("./scripts/e2e/native/proxy.cjs").target(process.env.NATIVE_E2E_PROJECT_REF); if(!process.env.NATIVE_E2E_ANON_KEY || !process.env.SERVICE_ROLE_KEY) throw Error("Configure native test branch credentials in GitHub Actions")'
-          mkdir -p ci-artifacts/native
           node scripts/e2e/native/proxy.cjs &
           PROXY_PID=$!
-          finish() {
-            status=$?
-            set +e
-            node scripts/e2e/native/cleanup.cjs
-            cleanup_status=$?
-            kill "$PROXY_PID" 2>/dev/null
-            if [ "$status" -ne 0 ]; then exit "$status"; else exit "$cleanup_status"; fi
-          }
-          trap finish EXIT
+          trap 'kill "$PROXY_PID" 2>/dev/null || true' EXIT
           for attempt in {1..30}; do
             if curl --silent --fail http://127.0.0.1:54321/auth/v1/health >/dev/null; then break; fi
             sleep 1
           done
-          node scripts/e2e/native/fixtures.cjs
+          node scripts/e2e/native/fixtures.cjs seed
           bash scripts/e2e/native/run.sh
+      - name: Restore production tester after success or failure
+        if: always()
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: |
+          if [ -n "${SIMULATOR_ID:-}" ]; then xcrun simctl terminate "$SIMULATOR_ID" com.musclemetric.app.e2e || true; fi
+          node scripts/e2e/native/cleanup.cjs
       - name: Record missing or interrupted native tests
         if: always()
         run: node scripts/e2e/native/report.cjs
@@ -119,3 +138,45 @@ jobs:
       - name: Shut down simulator
         if: ${{ always() && env.SIMULATOR_ID != '' }}
         run: xcrun simctl shutdown "$SIMULATOR_ID"
+
+  recovery:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.recovery_run_id != '' }}
+    runs-on: ubuntu-latest
+    concurrency:
+      group: live-tester-workout-e2e
+      cancel-in-progress: false
+    env:
+      MM_ALLURE_RESULTS: ci-artifacts/native-results
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Validate completed source run
+        uses: actions/github-script@v8
+        env:
+          SOURCE_RUN: ${{ inputs.recovery_run_id }}
+          SOURCE_ATTEMPT: ${{ inputs.recovery_run_attempt }}
+        with:
+          script: |
+            if (!/^\d+$/.test(process.env.SOURCE_RUN) || !/^\d+$/.test(process.env.SOURCE_ATTEMPT)) throw Error('Invalid recovery source');
+            const {data:r}=await github.rest.actions.getWorkflowRun({...context.repo,run_id:Number(process.env.SOURCE_RUN)});
+            if (r.status !== 'completed' || !['.github/workflows/native-frontend.yml','.github/workflows/production-known-history-e2e.yml'].includes(r.path)) throw Error('Source must be a completed native/combined workflow');
+      - uses: actions/download-artifact@v8
+        with:
+          name: native-recovery-${{ inputs.recovery_run_id }}-${{ inputs.recovery_run_attempt }}
+          run-id: ${{ inputs.recovery_run_id }}
+          github-token: ${{ github.token }}
+          path: ci-artifacts/native
+      - name: Remove only that run's fixtures and restore baseline
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/native/cleanup.cjs
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-recovery-result-${{ github.run_id }}
+          path: ci-artifacts/native-results/

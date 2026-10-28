@@ -5,7 +5,7 @@ appId: com.musclemetric.app.e2e
     visible: Start workout
     timeout: 30000
 - tapOn: Start workout
-- tapOn: Maestro Press
+- tapOn: ${STRENGTH_NAME}
 - tapOn:
     id: set-weight
 - eraseText

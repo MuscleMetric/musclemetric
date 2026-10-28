@@ -40,10 +40,34 @@ it('missing native executions become skipped plus a broken suite, never green',(
   expect(rows.some(r=>r.status==='passed')).toBe(false);
  }finally{fs.rmSync(dir,{recursive:true,force:true});}
 });
-it('iOS proxy refuses production and arbitrary destinations',()=>{
+it('iOS proxy permits only the approved production destination',()=>{
  const {target}=require('../../scripts/e2e/native/proxy.cjs');
- expect(()=>target('cpzgnhchdpkxnebjsyyi')).toThrow('non-production');
+ expect(target('cpzgnhchdpkxnebjsyyi')).toBe('https://cpzgnhchdpkxnebjsyyi.supabase.co');
  expect(()=>target('localhost:54321')).toThrow();
  expect(()=>target('')).toThrow();
- expect(target('abcdefghijklmnopqrst')).toBe('https://abcdefghijklmnopqrst.supabase.co');
+ expect(()=>target('abcdefghijklmnopqrst')).toThrow();
+});
+it('production public constants remain readable by existing release checks',()=>{
+ const {sourceConstant}=require('../../scripts/verify-production-workout-rpc.cjs');
+ const source=fs.readFileSync('lib/supabase.ts','utf8');
+ expect(sourceConstant(source,'SUPABASE_URL')).toBe('https://cpzgnhchdpkxnebjsyyi.supabase.co');
+ expect(sourceConstant(source,'SUPABASE_ANON_KEY').split('.')).toHaveLength(3);
+});
+it('recovery manifest rejects another account, baseline data and foreign weekly snapshots',()=>{
+ const script=`
+ const assert=require('node:assert/strict');
+ const {validate,USER}=require('./scripts/e2e/native/fixtures.cjs');
+ const id='12345678-1234-1234-1234-123456789abc',marker='Maestro '+id;
+ const make=()=>({version:1,userId:USER,runId:id,marker,
+ templates:Object.fromEntries(['workout','recovery','plans'].map(k=>[k,{id,title:marker+' '+k}])),
+ planTitle:marker+' plan',editedTitle:marker+' edited',caption:marker+' private post',
+ profile:{active_plan_id:null},baseline:{counts:{workout_history:0,posts:0,plans:0,goals:0,live_workout_drafts:0},templates:[]},saves:[id,id],weekKey:'2026-10-25',weekly:[]});
+ assert.equal(validate(make()).userId,USER);
+ for(const mutate of [m=>m.userId='someone-else',m=>m.baseline.counts.workout_history=1,
+ m=>m.templates.workout.title='unrelated',m=>m.baseline.templates=[id],
+ m=>m.weekly=[{user_id:'other',week_key:m.weekKey}]]){
+ const m=make();mutate(m);assert.throws(()=>validate(m));}
+ `;
+ const result=spawnSync(process.execPath,['-e',script],{encoding:'utf8'});
+ expect(result.stderr).toBe('');expect(result.status).toBe(0);
 });

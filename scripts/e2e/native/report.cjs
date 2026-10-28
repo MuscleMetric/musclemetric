@@ -2,7 +2,7 @@
 const fs=require('node:fs');
 const path=require('node:path');
 const report=require('../production-report.cjs');
-const cases={auth:'Authentication: session restore, rejected credentials and logout',workout:'Workout: enter sets, save and verify history',progress:'Progress: known cardio totals on screen',plans:'Plans: create, edit and reopen',recovery:'Recovery: relaunch offline and save after reconnection',social:'Social privacy: owner and stranger views'};
+const cases={auth:'Authentication: session restore, rejected credentials and logout',workout:'Workout: enter sets, save and verify history',progress:'Progress: known cardio totals on screen',plans:'Plans: create, edit and reopen',recovery:'Recovery: relaunch offline and save after reconnection',social:'Social: owner sees a private workout post'};
 function write(id,status,message,log,attachments=[],start=Date.now()) {
   const row=report.record('native/'+id,{parentSuite:'Native frontend — iOS',suite:cases[id]?'First user journeys':'Workflow',name:cases[id]||id,status,message,log,start,stop:Date.now()});
   if(attachments.length) {

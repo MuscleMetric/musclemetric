@@ -5,14 +5,35 @@ name: Plans - create a plan using an existing workout
 - openLink: musclemetric://features/plans/create/planInfo
 - tapOn:
     id: plan-title
-- inputText: Maestro Plan
+- inputText: ${PLAN_TITLE}
 - hideKeyboard
 - tapOn:
     id: plan-days-1
 - tapOn: Continue
 - tapOn: Start from existing workout
-- tapOn: Maestro Workout
+- tapOn: ${TEMPLATE_TITLE}
 - tapOn: Continue
+- tapOn: ${STRENGTH_NAME}
+- tapOn:
+    id: plan-goal-current-weight
+- eraseText
+- inputText: '50'
+- hideKeyboard
+- tapOn:
+    id: plan-goal-goal-weight
+- eraseText
+- inputText: '55'
+- hideKeyboard
+- tapOn:
+    id: plan-goal-current-reps
+- eraseText
+- inputText: '10'
+- hideKeyboard
+- tapOn:
+    id: plan-goal-goal-reps
+- eraseText
+- inputText: '10'
+- hideKeyboard
 - tapOn: Continue → Overview
 - tapOn: Create Plan
 - assertVisible: Plan created

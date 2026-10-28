@@ -1,36 +1,36 @@
-# Native frontend suite
+# iOS frontend E2E and Allure
 
-The first Maestro suite runs a standalone iOS Simulator build on a hosted Mac against a dedicated, non-production Supabase test branch. It never targets production. Its six results appear in Allure under **Native frontend — iOS / First user journeys**.
+Maestro drives a standalone iPhone Simulator app on a GitHub-hosted Mac. It connects to the existing production Supabase project using only `E2E_TESTER_EMAIL` and `E2E_TESTER_PASSWORD`. No Supabase branch, new account, service-role key, catalogue change or Android runner is needed.
 
-| Journey | UI assertions and persisted outcome |
+Results appear under **Native frontend — iOS / First user journeys** in Allure.
+
+| Journey | Assertions |
 | --- | --- |
-| Authentication | Real local Auth login, session survives relaunch, logout returns to login, invalid credentials stay rejected |
-| Workout | Enter 50 kg × 10 reps, save through review, open history and see 500 kg; backend verifies exactly one workout and set |
-| Progress | Two seeded runs total 5 km, 25 minutes, 5:00/km; assert those values on the cardio screen |
-| Plans | Create a plan from a fixture template, edit its title, reopen and verify persistence |
-| Recovery | Log a set, stop the app, stop only the disposable API, reopen offline, recover the same values, reconnect and save once |
-| Social privacy | Owner sees public and private captions; a different signed-in account sees only the public caption |
+| Authentication | Real password login, session restore after relaunch, logout, rejected invalid password |
+| Workout | Enter 50 kg × 10 reps, save, open history and see 500 kg; authenticated backend read verifies one saved workout and set |
+| Progress | Existing public cardio exercise with two run-owned histories: 5 km, 25 minutes and 5:00/km |
+| Recovery | Enter a set, stop the app, reopen with the loopback proxy returning 503, recover values, reconnect and save exactly once |
+| Plans | Create from a fixture template, edit title and reopen. **Skipped when there is no existing current-week stats row**, because production has no owner DELETE policy to undo the row that the real creation screen inserts |
+| Social | Owner can view a run-owned private post and log out |
 
-Fixture records are created with admin credentials only in host-side fixture setup and cleanup. The app uses a loopback-only proxy that supplies the test branch public key and signs in using ordinary authenticated sessions. Tests use separate accounts for each journey. `EXPO_PUBLIC_NATIVE_E2E=true` selects a distinct test app ID and enables a password form on the login screen; config/runtime guards reject non-the local proxy. Normal builds retain Google/Apple login. Provider-owned OAuth screens are outside this suite.
+Signed-in stranger privacy is a separate **skipped** result: only one tester credential pair is configured. Owner visibility does not prove cross-account access control. Backend isolation tests remain separate.
 
-## Running and reporting
+## Run and view
 
-Run **Native frontend E2E (Maestro)** in GitHub Actions, or run the full **Production deterministic history E2E** workflow. The latter waits for native, database and production jobs and merges all raw Allure results. Unzip the report artifact and open `index.html`. Native failures attach captured screenshots when available and sanitised diagnostics. A build/simulator/setup failure creates a broken suite result with all unexecuted journeys skipped; it never fabricates passing UI coverage.
+Run **iOS frontend E2E (Maestro)** in GitHub Actions, selecting `test/native-maestro-suite` while reviewing PR #65. The same job is called after production reference cleanup by **Production deterministic history E2E**, whose report merges native, backend and production results. PRs from the same repository also trigger the native workflow; forks never receive secrets or run this production job.
 
-The workflow builds the checked-in iOS workspace for the Simulator without signing, retaining its native targets. It changes bundle identifiers only in the CI checkout, installs Maestro CLI 2.12.0 and runs the six journeys sequentially. Test screenshots and sanitised failure diagnostics are attached to Allure. The build can take substantially longer than backend tests.
+Download `native-frontend-report-<run>-<attempt>` (or the combined report), unzip and open `index.html`. Failures include sanitized diagnostics and available screenshots. Missing executions become skipped journeys plus a broken suite result. A green workflow does not mean skipped coverage was executed. Building on the hosted Mac may take substantially longer than backend checks.
 
-## Hosted test backend setup
+## Production boundaries and recovery
 
-GitHub-hosted Macs cannot run the Docker-based local Supabase stack. Configure a separate Supabase development branch with the current application schema, then set these GitHub Actions entries:
+The scripts authenticate and verify the exact tester UUID and username before accessing fixtures. Training history, posts, plans, goals, drafts and active plan must be empty. Existing templates and profile preferences are recorded. All fixture UUIDs and exact titles are persisted in a **credential-free recovery artifact before any writes**. Public exercises are reused without modification. Posts are private.
 
-- Variable `NATIVE_E2E_PROJECT_REF`: the test branch project ref.
-- Secret `NATIVE_E2E_ANON_KEY`: the test branch anon/public API key.
-- Secret `NATIVE_E2E_SERVICE_ROLE_KEY`: the test branch service-role key (host-side fixture setup/cleanup only).
+Standalone native and existing production workflows share the `live-tester-workout-e2e` concurrency lock with cancellation disabled. The combined workflow runs its native job only after production cleanup; its outer workflow owns the shared lock. Do not manually use the tester account during a run.
 
-The loopback proxy rejects the production project ref and restricts forwarding to Auth and REST paths on the exact configured Supabase hostname. It never places a service-role key in the app bundle. The app connects to `http://127.0.0.1:54321` using a placeholder public key; the proxy supplies the branch public key. The recovery test toggles a local 503 response, without stopping the hosted database.
+Cleanup stops the simulator app, removes only run-owned records and restores the saved profile and weekly stats. It verifies original counts and templates. Cleanup failure fails the job and retains the recovery artifact. If a runner is forcibly terminated, run this workflow with `recovery_run_id` and `recovery_run_attempt` pointing to the **completed** interrupted run; this performs cleanup only. Do not rerun fixtures over a dirty tester account. Recovery artifacts expire after 30 days.
 
-Accounts have unique random credentials per run. Cleanup deletes only the accounts and exercises recorded in that run's manifest, including partial setup failures. Credentials/manifests are never uploaded. A hard runner termination can prevent cleanup; the dedicated branch must contain no production data and can be reset separately when no tests are running. Branch compute charges apply while it exists.
+The native app uses a distinct `.e2e` bundle ID and test-only password form. It connects to a loopback proxy forwarding only Auth/REST to the fixed production host. The proxy replaces the placeholder public key with the existing public anon key; user JWTs remain ordinary authenticated sessions. Offline testing affects only this local proxy, never the production service. Normal builds keep their existing authentication UI.
 
-## Scope
+## Limits
 
-Apple/iOS execution only; no Android build or runner is added. The first suite does not automate provider-owned Apple/Google sign-in screens, native push delivery, OS background eviction, Live Activities, or realtime WebSocket delivery. Deep links enter real feature screens where practical; no alternate save logic is introduced. Physical iPhone checks remain useful for hardware and OS-specific behaviour.
+This suite has no Android implementation. Provider-owned Apple/Google sign-in screens, push delivery, background eviction, Live Activities, realtime WebSockets and physical-device behavior are outside this first suite. Plans are not claimed as executed until their cleanup prerequisite is met. No schema permission changes are made by the workflow.

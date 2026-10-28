@@ -6,8 +6,8 @@ name: Workout - enter a set, save and read history
 - runFlow: helpers/save.yaml
 - openLink: musclemetric://features/history/screens/WorkoutHistoryListScreen
 - extendedWaitUntil:
-    visible: Maestro Workout
+    visible: ${TEMPLATE_TITLE}
     timeout: 30000
-- tapOn: Maestro Workout
+- tapOn: ${TEMPLATE_TITLE}
 - assertVisible: '500 kg'
-- assertVisible: Maestro Press
+- assertVisible: ${STRENGTH_NAME}

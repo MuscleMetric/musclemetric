@@ -8,7 +8,7 @@ appId: com.musclemetric.app.e2e
 - tapOn:
     id: plan-edit-title
 - eraseText
-- inputText: Maestro Plan Edited
+- inputText: ${EDITED_TITLE}
 - hideKeyboard
 - tapOn: Save changes
 - tapOn: Save changes
@@ -16,5 +16,5 @@ appId: com.musclemetric.app.e2e
 - tapOn: OK
 - openLink: musclemetric://features/plans/edit?planId=${PLAN_ID}
 - extendedWaitUntil:
-    visible: Maestro Plan Edited
+    visible: ${EDITED_TITLE}
     timeout: 30000

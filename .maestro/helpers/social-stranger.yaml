@@ -5,4 +5,4 @@ appId: com.musclemetric.app.e2e
 - extendedWaitUntil:
     visible: Maestro public post
     timeout: 30000
-- assertNotVisible: Maestro private post
+- assertNotVisible: ${PRIVATE_CAPTION}
