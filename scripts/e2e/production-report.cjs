@@ -58,7 +58,7 @@ function resultFor(id) {
     fullName: (backend ? "backend-regressions." : "production-known-history.") + id, name,
     status: "unknown", stage: "running", start: Date.now(), steps: [],
     labels: [{ name: "parentSuite", value: process.env.MM_REPORT_PREVIEW === "true" ?
-      "REPORT PREVIEW — simulated, no production calls" : backend ? "Disposable backend regression suite" : "MuscleMetric production API" },
+      "REPORT PREVIEW — simulated, no production calls" : backend ? "Disposable database checks" : "Live production checks" },
     { name: "suite", value: suite }, { name: "framework", value: "Node scripts" }],
     description: "API-level verification. Unexecuted checks are skipped; cleanup is independently reported.",
   };

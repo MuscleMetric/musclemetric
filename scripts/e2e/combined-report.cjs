@@ -3,7 +3,7 @@ const fs=require('node:fs');
 const report=require('./production-report.cjs');
 for(const [name,env] of [['Disposable database suite','DATABASE_RESULT'],['Live production suite','PRODUCTION_RESULT']]) {
   const outcome=process.env[env]||'unknown';
-  report.record('job/'+env,{suite:'Workflow completion',name,status:outcome==='success'?'passed':outcome==='skipped'?'skipped':'broken',
+  report.record('job/'+env,{parentSuite:'Workflow status',suite:'Workflow completion',name,status:outcome==='success'?'passed':outcome==='skipped'?'skipped':'broken',
     message:'GitHub job conclusion: '+outcome});
 }
 if(process.env.GITHUB_STEP_SUMMARY)fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,

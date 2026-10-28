@@ -14,3 +14,25 @@ describe('database assertions retain their actual outcome in Allure',()=>{
     expect(parseTap('1..2\nok 1 - pending # SKIP unavailable\nnot ok 2 - future # TODO').tests.map(t=>t.status)).toEqual(['skipped','skipped']);
   });
 });
+
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const { spawnSync } = require('node:child_process');
+it('combined report preserves failed, cancelled and skipped upstream jobs', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'combined-report-'));
+  try {
+    for (const outcome of ['failure', 'cancelled', 'skipped', 'success']) {
+      const result = spawnSync(process.execPath, ['scripts/e2e/combined-report.cjs'], {
+        env: { ...process.env, MM_ALLURE_RESULTS: dir, DATABASE_RESULT: outcome, PRODUCTION_RESULT: 'success', GITHUB_STEP_SUMMARY: '' },
+        encoding: 'utf8',
+      });
+      expect(result.status).toBe(0);
+      const rows = fs.readdirSync(dir).filter(f => f.endsWith('-result.json')).map(f => JSON.parse(fs.readFileSync(path.join(dir, f))));
+      expect(rows).toHaveLength(2);
+      const database = rows.find(r => r.testCaseId === 'job/DATABASE_RESULT');
+      expect(database.status).toBe(outcome === 'success' ? 'passed' : outcome === 'skipped' ? 'skipped' : 'broken');
+      expect(database.statusDetails.message).toContain(outcome);
+    }
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});

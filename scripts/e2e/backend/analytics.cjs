@@ -25,8 +25,12 @@ module.exports = async function analytics(ctx) {
   await ctx.run('analytics-incomplete',async()=>{
     const ex=await ctx.exercise('cardio','incomplete intervals');
     await save(a,payload(ex,[{distance:2,time_seconds:600},{distance:3,time_seconds:null},{distance:null,time_seconds:300},
-      {distance:0,time_seconds:0},{distance:null,time_seconds:null}]));
+      {distance:0,time_seconds:0}]));
     await save(a,payload(ex,[{distance:0,time_seconds:0}]));
+    const empty=payload(ex,[{distance:null,time_seconds:null}]);
+    const rejected=await a.client.rpc('save_completed_workout_v2',{p_workout:empty,p_expected_user_id:a.id});
+    equal(rejected.error?.code,'23514','All-null set is rejected by the database constraint');
+    equal(data(await a.client.from('workout_history').select('id').eq('client_save_id',empty.client_save_id),'Rejected empty save'),[],'Rejected empty save leaves no parent');
     const c=(await deep(ex)).cardio;
     equal(Number(c.session_count),1,'Zero-only session excluded from cardio totals');
     equal(Number(c.total_distance_km),5,'Available distance counted'); equal(Number(c.total_duration_seconds),900,'Available seconds counted');
