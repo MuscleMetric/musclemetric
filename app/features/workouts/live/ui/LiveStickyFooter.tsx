@@ -27,6 +27,7 @@ export function LiveStickyFooter(props: {
       }}
     >
       <Pressable
+        testID="workout-review"
         onPress={props.onPress}
         disabled={props.disabled}
         style={{

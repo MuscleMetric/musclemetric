@@ -1,0 +1,110 @@
+name: Native frontend E2E (Maestro)
+on:
+  workflow_call:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.maestro/**'
+      - 'scripts/e2e/native/**'
+      - 'components/testing/**'
+      - 'app.config.js'
+      - '.github/workflows/native-frontend.yml'
+permissions:
+  contents: read
+jobs:
+  native:
+    name: Android user journeys and Allure
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      EXPO_PUBLIC_NATIVE_E2E: 'true'
+      EXPO_PUBLIC_SUPABASE_URL: http://10.0.2.2:54321
+      MM_ALLURE_RESULTS: ci-artifacts/native-results
+      MAESTRO_CLI_NO_ANALYTICS: 'true'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.119.0
+      - run: npm ci
+      - name: Start disposable database and expose only its public key to the app
+        run: |
+          supabase start
+          supabase db reset
+          set -a
+          source <(supabase status -o env)
+          set +a
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$ANON_KEY" >> "$GITHUB_ENV"
+          node scripts/e2e/native/fixtures.cjs
+      - name: Generate Android automation app
+        run: npx expo prebuild --platform android --no-install
+      - name: Allow HTTP only in the generated local test app
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('android/app/src/main/AndroidManifest.xml')
+          s=p.read_text().replace('<application ', '<application android:usesCleartextTraffic="true" ', 1)
+          p.write_text(s)
+          PY
+      - name: Build standalone Android APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx4g
+      - name: Install pinned Maestro CLI
+        run: |
+          curl -fsSL https://github.com/mobile-dev-inc/Maestro/releases/download/cli-2.12.0/maestro.zip -o /tmp/maestro.zip
+          unzip -q /tmp/maestro.zip -d "$RUNNER_TEMP/maestro"
+          echo "$RUNNER_TEMP/maestro/maestro/bin" >> "$GITHUB_PATH"
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Execute six native journeys
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: |
+            adb install android/app/build/outputs/apk/release/app-release.apk
+            bash scripts/e2e/native/run.sh
+      - name: Record missing or interrupted native tests
+        if: always()
+        run: node scripts/e2e/native/report.cjs
+      - name: Upload native results for combined report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: native-allure-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/native-results/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Generate native Allure report
+        if: always()
+        run: |
+          npm ci --prefix tools/allure --ignore-scripts
+          tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/native-results
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: native-frontend-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/allure-report/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Destroy disposable database and test credentials
+        if: always()
+        run: |
+          supabase stop --no-backup
+          rm -f ci-artifacts/native/fixtures.json

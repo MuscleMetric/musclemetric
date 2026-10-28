@@ -1,0 +1,8 @@
+appId: com.musclemetric.app.e2e
+---
+- launchApp
+- extendedWaitUntil:
+    visible: Continue workout\?
+    timeout: 30000
+- tapOn: Continue
+- assertVisible: '10 reps × 50kg'

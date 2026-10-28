@@ -1,0 +1,19 @@
+appId: com.musclemetric.app.e2e
+name: Plans - create a plan using an existing workout
+---
+- runFlow: helpers/login.yaml
+- openLink: musclemetric://features/plans/create/planInfo
+- tapOn:
+    id: plan-title
+- inputText: Maestro Plan
+- hideKeyboard
+- tapOn:
+    id: plan-days-1
+- tapOn: Continue
+- tapOn: Start from existing workout
+- tapOn: Maestro Workout
+- tapOn: Continue
+- tapOn: Continue → Overview
+- tapOn: Create Plan
+- assertVisible: Plan created
+- tapOn: OK

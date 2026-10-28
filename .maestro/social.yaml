@@ -1,0 +1,10 @@
+appId: com.musclemetric.app.e2e
+name: Social privacy - owner sees public and private posts
+---
+- runFlow: helpers/login.yaml
+- openLink: musclemetric://features/social/profile/${OWNER_ID}
+- extendedWaitUntil:
+    visible: Maestro public post
+    timeout: 30000
+- assertVisible: Maestro private post
+- runFlow: helpers/logout.yaml

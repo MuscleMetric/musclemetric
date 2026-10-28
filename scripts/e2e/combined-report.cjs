@@ -1,7 +1,7 @@
 "use strict";
 const fs=require('node:fs');
 const report=require('./production-report.cjs');
-for(const [name,env] of [['Disposable database suite','DATABASE_RESULT'],['Live production suite','PRODUCTION_RESULT']]) {
+for(const [name,env] of [['Native frontend suite','NATIVE_RESULT'],['Disposable database suite','DATABASE_RESULT'],['Live production suite','PRODUCTION_RESULT']]) {
   const outcome=process.env[env]||'unknown';
   report.record('job/'+env,{parentSuite:'Workflow status',suite:'Workflow completion',name,status:outcome==='success'?'passed':outcome==='skipped'?'skipped':'broken',
     message:'GitHub job conclusion: '+outcome});

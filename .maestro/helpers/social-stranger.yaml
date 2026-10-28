@@ -1,0 +1,8 @@
+appId: com.musclemetric.app.e2e
+---
+- runFlow: login.yaml
+- openLink: musclemetric://features/social/profile/${OWNER_ID}
+- extendedWaitUntil:
+    visible: Maestro public post
+    timeout: 30000
+- assertNotVisible: Maestro private post

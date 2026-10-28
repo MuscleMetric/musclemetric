@@ -40,6 +40,7 @@ export function BottomActions(props: {
         </Pressable>
 
         <Pressable
+          testID="set-confirm"
           onPress={() => {
             Keyboard.dismiss();
             props.onPrimary();

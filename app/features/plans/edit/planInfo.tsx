@@ -102,7 +102,8 @@ export default function PlanInfo() {
                   color={colors.textMuted}
                 />
                 <TextInput
-                  value={localTitle}
+                  testID="plan-edit-title"
+                value={localTitle}
                   onChangeText={setLocalTitle}
                   placeholder="e.g. Hypertrophy Block"
                   placeholderTextColor={colors.textMuted}
