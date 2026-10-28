@@ -7,6 +7,6 @@ for(const [name,env] of [['Native frontend suite','NATIVE_RESULT'],['Disposable 
     message:'GitHub job conclusion: '+outcome});
 }
 if(process.env.GITHUB_STEP_SUMMARY)fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
-  '\n## Complete database report\n\nThe report separates disposable database tests from live production checks.\n\n'+
-  '| Suite | GitHub result |\n| --- | --- |\n| Disposable database | '+process.env.DATABASE_RESULT+' |\n| Live production | '+process.env.PRODUCTION_RESULT+' |\n\n'+
+  '\n## Complete database report\n\nThe report separates native Android journeys, disposable database checks and live production checks.\n\n'+
+  '| Suite | GitHub result |\n| --- | --- |\n| Disposable database | '+process.env.DATABASE_RESULT+' |\n| Native frontend | '+process.env.NATIVE_RESULT+' |\n| Live production | '+process.env.PRODUCTION_RESULT+' |\n\n'+
   'Skipped or broken suites are not coverage passes. Expand Database rules for individual SQL assertions, then backend Privacy, Save recovery, Analytics and Cleanup.\n');

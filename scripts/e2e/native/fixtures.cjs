@@ -12,6 +12,7 @@ async function seed() {
   for(const key of ['auth','workout','progress','plans','recovery','social','stranger']) {
     const a=await ctx.account('Maestro '+key);
     data(await ctx.admin.from('profiles').update({height:180,weight:80,date_of_birth:'2000-01-01',weekly_workout_goal:3,steps_goal:8000,
+      onboarding_stage2_completed_at:new Date().toISOString(),onboarding_stage3_completed_at:new Date().toISOString(),
       onboarding_step:3,onboarding_completed_at:new Date().toISOString(),
       settings:{level:'beginner',primaryGoal:'strength',unit_height:'cm',unit_weight:'kg'}}).eq('id',a.id),'Complete fixture onboarding');
     const template=data(await ctx.admin.from('workouts').insert({user_id:a.id,title:'Maestro Workout'}).select('id').single(),'Seed template').id;
