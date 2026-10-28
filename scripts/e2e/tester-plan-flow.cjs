@@ -2,8 +2,8 @@
 
 /**
  * End-to-end plan create/edit/ownership tests run only with a disposable
- * local Supabase user. This function must never be imported by the production
- * tester job: creating a plan changes active_plan_id and weekly targets.
+ * local Supabase user, or the locked production tester with a pre-write
+ * recovery manifest and run-specific markers. Creating a plan activates it.
  */
 const assert = require("node:assert/strict");
 const { randomUUID } = require("node:crypto");
@@ -15,9 +15,10 @@ function unwrap(response, label) {
   return response.data;
 }
 
-async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
+async function verifyTesterPlanFlow({ userClient, userId, exerciseIds, runLabel = null, onPlanCreated = () => {} }) {
   const [strengthId, cardioId] = exerciseIds;
-  const title = "AUTOMATED_E2E_PLAN_" + randomUUID();
+  const title = "AUTOMATED_E2E_PLAN_" + (runLabel || randomUUID());
+  const suffix = runLabel ? " [E2E_" + runLabel + "]" : "";
   const endDate = new Date(Date.now() + 35 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const initialExercises = [{
     exerciseId: strengthId, order_index: 0, supersetGroup: null, isDropset: false,
@@ -31,7 +32,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
   // Actual app create/review.tsx payload. Tests SECURITY DEFINER user-ID guard.
   const createArgs = {
     p_user_id: userId, p_title: title, p_end_date: endDate,
-    p_workouts: [{ title: "Strength A", exercises: initialExercises }],
+    p_workouts: [{ title: "Strength A" + suffix, exercises: initialExercises }],
     p_goals: initialGoals,
   };
   const forbiddenCreate = await userClient.rpc("create_plan_v1", {
@@ -42,6 +43,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
   const planId = unwrap(await userClient.rpc("create_plan_v1", createArgs),
     "Create full plan through authenticated RPC");
   assert.match(planId, /^[0-9a-f-]{36}$/i);
+  await onPlanCreated(planId); // Persist identity before any read/assertion/edit can fail.
 
   const plan = unwrap(await userClient.from("plans").select("id,title,end_date,weekly_target_sessions")
     .eq("id",planId).eq("user_id",userId).single(), "Read created plan");
@@ -57,7 +59,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
     .select("id,workout_id,title,order_index,is_archived")
     .eq("plan_id",planId).eq("is_archived",false), "Read plan workouts");
   assert.equal(planned.length,1);
-  assert.equal(planned[0].title,"Strength A");
+  assert.equal(planned[0].title,"Strength A" + suffix);
 
   const exerciseRows = unwrap(await userClient.from("workout_exercises")
     .select("id,workout_id,exercise_id,target_sets,target_reps,target_weight,is_archived")
@@ -80,10 +82,10 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
   const updateArgs = {
     p_plan_id:planId, p_user_id:userId, p_title:updatedTitle, p_end_date:endDate,
     p_workouts:[
-      { id:planned[0].id,title:"Strength B",order_index:0,
+      { id:planned[0].id,title:"Strength B" + suffix,order_index:0,
         exercises:[{ id:exerciseRows[0].id,exerciseId:strengthId,order_index:0,
           supersetGroup:null,isDropset:false }] },
-      { id:null,title:"Cardio B",order_index:1,
+      { id:null,title:"Cardio B" + suffix,order_index:1,
         exercises:[{ id:null,exerciseId:cardioId,order_index:0,
           supersetGroup:null,isDropset:false }] },
     ],
@@ -106,7 +108,7 @@ async function verifyTesterPlanFlow({ userClient, userId, exerciseIds }) {
     .select("id,workout_id,title,order_index,is_archived")
     .eq("plan_id",planId).eq("is_archived",false).order("order_index"),
   "Read edited plan workouts");
-  assert.deepEqual(updatedWorkouts.map(w=>w.title),["Strength B","Cardio B"]);
+  assert.deepEqual(updatedWorkouts.map(w=>w.title),["Strength B" + suffix,"Cardio B" + suffix]);
   assert.deepEqual(updatedWorkouts.map(w=>w.order_index),[0,1]);
 
   const cardioRows = unwrap(await userClient.from("workout_exercises")

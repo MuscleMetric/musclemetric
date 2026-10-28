@@ -1,0 +1,122 @@
+name: Production deterministic history E2E
+
+on:
+  workflow_dispatch:
+    inputs:
+      recovery_run_id:
+        description: 'Cleanup only: original GitHub run ID (leave blank for full test)'
+        type: string
+        default: ''
+      recovery_attempt:
+        description: 'Original run attempt for cleanup-only recovery'
+        type: string
+        default: '1'
+  schedule:
+    - cron: "13 4 * * *"
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: live-tester-workout-e2e
+  cancel-in-progress: false
+
+env:
+  MM_E2E_STATE_FILE: ci-artifacts/production-known-history-state.json
+  MM_ALLURE_RESULTS: ci-artifacts/allure-results
+
+jobs:
+  production_reference:
+    name: Production tester setup / checks / cleanup
+    if: ${{ github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/allure/package-lock.json
+      - name: Install pinned dependencies
+        run: npm ci
+      - name: Install pinned Allure report generator
+        run: npm ci --prefix tools/allure --ignore-scripts
+      - name: Validate cleanup-only source
+        if: ${{ inputs.recovery_run_id != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RECOVERY_RUN_ID: ${{ inputs.recovery_run_id }}
+          RECOVERY_ATTEMPT: ${{ inputs.recovery_attempt }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RECOVERY_RUN_ID" =~ ^[0-9]+$ ]]
+          [[ "$RECOVERY_ATTEMPT" =~ ^[0-9]+$ ]]
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$RECOVERY_RUN_ID" > /tmp/recovery-source.json
+          node -e 'const r=require("/tmp/recovery-source.json"); if(r.path!==".github/workflows/production-known-history-e2e.yml" || r.status!=="completed") throw Error("Recovery requires a completed production workflow run")'
+      - name: Download original pre-write recovery record
+        if: ${{ success() && inputs.recovery_run_id != '' }}
+        uses: actions/download-artifact@v4
+        with:
+          name: production-recovery-${{ inputs.recovery_run_id }}-${{ inputs.recovery_attempt }}
+          run-id: ${{ inputs.recovery_run_id }}
+          github-token: ${{ github.token }}
+          path: ci-artifacts
+      - name: Prepare recovery record before production writes
+        if: ${{ inputs.recovery_run_id == '' }}
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/production-known-history.cjs prepare
+      - name: Preserve recovery record BEFORE seeding
+        if: ${{ inputs.recovery_run_id == '' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-recovery-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/production-known-history-state.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: 'Stage 1: Seed known history'
+        if: ${{ inputs.recovery_run_id == '' }}
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/production-known-history.cjs setup
+      - name: 'Stage 2: Verify production behaviour'
+        if: ${{ inputs.recovery_run_id == '' }}
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/production-known-history.cjs test
+      - name: 'Stage 3: Cleanup and verify restoration'
+        if: ${{ always() && hashFiles('ci-artifacts/production-known-history-state.json') != '' }}
+        env:
+          E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+          E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
+        run: node scripts/e2e/production-known-history.cjs cleanup
+      - name: Summarise results including skipped or interrupted checks
+        if: always()
+        run: node scripts/e2e/production-report.cjs finalize
+      - name: Generate standalone Allure report
+        if: always()
+        run: tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/allure-results
+      - name: Upload Allure report and sanitised results
+        id: report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-allure-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            ci-artifacts/allure-report/
+            ci-artifacts/allure-results/
+          if-no-files-found: warn
+          retention-days: 14
+      - name: Link report download
+        if: ${{ always() && steps.report.outputs.artifact-url != '' }}
+        env:
+          REPORT_URL: ${{ steps.report.outputs.artifact-url }}
+        run: printf '\n[Download Allure report](%s) — unzip and open index.html.\n' "$REPORT_URL" >> "$GITHUB_STEP_SUMMARY"
