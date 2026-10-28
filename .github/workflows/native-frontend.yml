@@ -33,7 +33,7 @@ jobs:
       group: ${{ github.workflow == 'Production deterministic history E2E' && format('native-combined-{0}', github.run_id) || 'live-tester-workout-e2e' }}
       cancel-in-progress: false
     name: iPhone simulator journeys and Allure
-    runs-on: macos-15
+    runs-on: macos-15-intel
     timeout-minutes: 60
     env:
       EXPO_PUBLIC_NATIVE_E2E: 'true'
