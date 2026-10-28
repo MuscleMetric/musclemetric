@@ -1,0 +1,79 @@
+name: Disposable database checks (reusable)
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  database:
+    name: All database rules and backend regression checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      MM_REPORT_SUITE: backend
+      MM_ALLURE_RESULTS: ci-artifacts/backend-results
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - uses: supabase/setup-cli@v3
+        with:
+          version: 2.119.0
+      - name: Start disposable Supabase
+        run: supabase start
+      - name: Apply all migrations to a clean local database
+        id: reset
+        run: supabase db reset
+      - name: Install dependencies
+        id: install
+        run: npm ci
+      - name: Run every database SQL test with individual Allure results
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' && steps.install.outcome == 'success' }}
+        run: node scripts/e2e/database-checks.cjs sql
+      - name: Existing authenticated backend E2E
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' && steps.install.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source <(supabase status -o env)
+          set +a
+          node scripts/e2e/database-checks.cjs legacy
+      - name: Cross-user privacy, save recovery and analytics edge cases
+        if: ${{ !cancelled() && steps.reset.outcome == 'success' && steps.install.outcome == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set -a
+          source <(supabase status -o env)
+          set +a
+          node scripts/e2e/backend-regressions.cjs
+      - name: Finalise missing or interrupted results
+        if: always()
+        run: node scripts/e2e/production-report.cjs finalize
+      - name: Upload database results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: database-allure-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/backend-results/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Install standalone report generator
+        if: always()
+        run: npm ci --prefix tools/allure --ignore-scripts
+      - name: Generate disposable database report
+        if: always()
+        run: tools/allure/node_modules/.bin/allure generate --clean --config tools/allure/allurerc.mjs ci-artifacts/backend-results
+      - name: Upload disposable database report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-database-report-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-artifacts/allure-report/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Destroy disposable database
+        if: always()
+        run: supabase stop --no-backup

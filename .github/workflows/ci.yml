@@ -235,44 +235,7 @@ jobs:
 
   database:
     name: Database baseline + tester E2E
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v7
-
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v3
-        with:
-          version: 2.119.0
-
-      - name: Start fresh database
-        run: supabase start
-
-      - name: Rebuild from migrations
-        run: supabase db reset
-
-      - name: Run database behaviour tests
-        run: supabase test db supabase/tests/database
-
-      - name: Set up Node.js for tester E2E
-        uses: actions/setup-node@v7
-        with:
-          node-version: 20
-          cache: npm
-
-      - name: Install E2E client dependencies
-        run: npm ci
-
-      - name: Run authenticated tester E2E against disposable Supabase
-        shell: bash
-        run: |
-          set -euo pipefail
-          set -a
-          source <(supabase status -o env)
-          set +a
-          node scripts/e2e/tester-workout-flow.cjs
+    uses: ./.github/workflows/backend-regressions.yml
 
   gate:
     name: CI gate
