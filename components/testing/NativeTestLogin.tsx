@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { View, Text, TextInput, Pressable } from "react-native";
 import { supabase } from "@/lib/supabase";
 
-// Included only in explicitly configured local automation builds. Uses real Auth.
+// Rendered only in explicitly configured local automation builds. Uses real Auth.
 export function NativeTestLogin() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

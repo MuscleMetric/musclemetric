@@ -29,3 +29,14 @@ it('native app configuration refuses production and separates the test package',
   if(oldUrl===undefined)delete process.env.EXPO_PUBLIC_SUPABASE_URL;else process.env.EXPO_PUBLIC_SUPABASE_URL=oldUrl;
  }
 });
+it('missing native executions become skipped plus a broken suite, never green',()=>{
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'native-missing-'));
+ try {
+  const r=spawnSync(process.execPath,['scripts/e2e/native/report.cjs'],{env:{...process.env,MM_ALLURE_RESULTS:dir}});
+  expect(r.status).toBe(0);
+  const rows=fs.readdirSync(dir).filter(f=>f.endsWith('-result.json')).map(f=>JSON.parse(fs.readFileSync(path.join(dir,f))));
+  expect(rows.filter(r=>r.status==='skipped')).toHaveLength(6);
+  expect(rows.filter(r=>r.status==='broken')).toHaveLength(1);
+  expect(rows.some(r=>r.status==='passed')).toBe(false);
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});

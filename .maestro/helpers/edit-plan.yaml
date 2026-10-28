@@ -12,6 +12,8 @@ appId: com.musclemetric.app.e2e
 - hideKeyboard
 - tapOn: Save changes
 - tapOn: Save changes
+- assertVisible: Saved
+- tapOn: OK
 - openLink: musclemetric://features/plans/edit?planId=${PLAN_ID}
 - extendedWaitUntil:
     visible: Maestro Plan Edited

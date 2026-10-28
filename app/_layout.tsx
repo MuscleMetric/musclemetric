@@ -25,7 +25,7 @@ import { ResumeWorkoutGate } from "@/app/features/workouts/components/ResumeWork
 import { ActiveWorkoutSessionProvider } from "@/app/features/workouts/live/session/ActiveWorkoutSessionProvider";
 import { ActiveWorkoutBar } from "@/app/features/workouts/live/session/ActiveWorkoutBar";
 
-initSentry();
+if (process.env.EXPO_PUBLIC_NATIVE_E2E !== "true") initSentry();
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({

@@ -30,7 +30,7 @@ async function verifyWorkout(account) {
 async function main(){
  let failed=false;
  for(const id of Object.keys(cases)) {
-  const a=fixtures.accounts[id];const startPhase=phase;let error;
+  const a=fixtures.accounts[id];const startPhase=phase,start=Date.now();let error;
   try {
    flow(id,a);
    if(id==='workout')await verifyWorkout(a);
@@ -54,7 +54,7 @@ async function main(){
   for(let n=startPhase+1;n<=phase;n++) for(const p of screenshots('ci-artifacts/native/phase-'+n)) {
    const source=id+'-'+attachments.length+'.png';fs.copyFileSync(p,path.join(process.env.MM_ALLURE_RESULTS,source));attachments.push({name:'Native screen '+attachments.length,source,type:'image/png'});
   }
-  write(id,error?'failed':'passed',error?scrub(error.message):undefined,error?scrub(error.stack):undefined,attachments);
+  write(id,error?'failed':'passed',error?scrub(error.message):undefined,error?scrub(error.stack):undefined,attachments,start);
  }
  if(failed)process.exitCode=1;
 }
