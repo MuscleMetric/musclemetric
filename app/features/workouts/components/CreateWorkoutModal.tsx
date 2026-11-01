@@ -42,6 +42,14 @@ export function CreateWorkoutModal({
         >
           <View style={{ gap: layout.space.sm }}>
             <Button
+              title="Quick start workout"
+              onPress={() => {
+                onClose();
+                router.push("/features/workouts/live");
+              }}
+            />
+
+            <Button
               title="Build my own workout"
               onPress={() => {
                 onClose();
