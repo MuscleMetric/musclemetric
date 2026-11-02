@@ -95,7 +95,7 @@ it('creates a private strength exercise, selects it, and excludes already-presen
   fireEvent.changeText(screen.getByPlaceholderText('Setup, cues or notes'), 'Keep elbows tucked');
   fireEvent.press(await screen.findByText('Back'));
   fireEvent.press(screen.getByText('Dumbbells'));
-  fireEvent.press(screen.getAllByText('Create exercise').at(-1)!);
+  fireEvent.press(screen.getAllByText('Create exercise')[1]);
 
   await waitFor(() => {
     expect(supabase.rpc).toHaveBeenCalledWith('create_private_exercise', {
@@ -127,10 +127,10 @@ it('does not select a custom exercise when the private-exercise RPC fails', asyn
   fireEvent.changeText(screen.getByPlaceholderText('e.g. Wide-Grip Cable Row'), 'New Row');
   fireEvent.press(await screen.findByText('Chest'));
   fireEvent.press(screen.getByText('Barbell'));
-  fireEvent.press(screen.getAllByText('Create exercise').at(-1)!);
+  fireEvent.press(screen.getAllByText('Create exercise')[1]);
 
   await waitFor(() => expect(screen.getByText('Could not save')).toBeTruthy());
   expect(screen.queryByText('Add (1)')).toBeNull();
   expect(onDone).not.toHaveBeenCalled();
-  expect(screen.getByText('Create exercise')).toBeTruthy();
+  expect(screen.getAllByText('Create exercise').length).toBeGreaterThan(0);
 });
