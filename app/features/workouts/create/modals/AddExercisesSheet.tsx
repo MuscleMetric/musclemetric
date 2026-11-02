@@ -482,8 +482,9 @@ export default function AddExercisesSheet({
         <View style={styles.headerIconBtn} />
       </View>
       <ScrollView
+        style={{ flex: 1 }}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: FOOTER_H + 32, gap: 16 }}
       >
         <View>
           <Text style={{ color: colors.text, fontWeight: "700", marginBottom: 8 }}>Name</Text>
@@ -492,7 +493,7 @@ export default function AddExercisesSheet({
             onChangeText={setCreateName}
             placeholder="e.g. Wide-Grip Cable Row"
             placeholderTextColor={colors.textMuted}
-            style={styles.searchInput}
+            style={[styles.searchInput, { flex: 0, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, backgroundColor: colors.surface }]}
             autoCapitalize="words"
             accessibilityLabel="Exercise name"
           />
@@ -504,7 +505,7 @@ export default function AddExercisesSheet({
             onChangeText={setCreateDescription}
             placeholder="Setup, cues or notes"
             placeholderTextColor={colors.textMuted}
-            style={[styles.searchInput, { minHeight: 76, textAlignVertical: "top" }]}
+            style={[styles.searchInput, { flex: 0, minHeight: 76, textAlignVertical: "top", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, backgroundColor: colors.surface }]}
             multiline
             accessibilityLabel="Exercise description"
           />
@@ -557,7 +558,7 @@ export default function AddExercisesSheet({
           </Text>
         ) : null}
       </ScrollView>
-      <View style={styles.stickyFooter}>
+      <View style={[styles.stickyFooter, { minHeight: FOOTER_H }] }>
         <Pressable
           onPress={submitCreate}
           disabled={createSaving || loadingMuscles}
@@ -580,7 +581,7 @@ export default function AddExercisesSheet({
       <SafeAreaView style={[styles.screen, { minHeight: windowH }]}>
         {createMode ? createPanel : (
           <>
-        {header}
+            {header}
 
         <View style={styles.body}>
           {/* Search */}
