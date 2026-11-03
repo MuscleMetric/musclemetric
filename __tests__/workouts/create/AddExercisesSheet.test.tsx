@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- Native UI stubs for the picker regression. */
 import React from 'react';
-import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AddExercisesSheet from '@/app/features/workouts/create/modals/AddExercisesSheet';
 import { fetchExercises } from '@/app/features/workouts/create/data/exercises.query';
 import { supabase } from '@/lib/supabase';
@@ -133,4 +133,46 @@ it('does not select a custom exercise when the private-exercise RPC fails', asyn
   expect(screen.queryByText('Add (1)')).toBeNull();
   expect(onDone).not.toHaveBeenCalled();
   expect(screen.getAllByText('Create exercise').length).toBeGreaterThan(0);
+});
+
+it('ignores a creation result from a closed and reopened picker session', async () => {
+  let finishCreation!: (result: { data: string; error: null }) => void;
+  (supabase.rpc as jest.Mock).mockReturnValue(
+    new Promise<{ data: string; error: null }>((resolve) => {
+      finishCreation = resolve;
+    }),
+  );
+  const onDone = jest.fn();
+  const onClose = jest.fn();
+  const picker = (visible: boolean) => (
+    <AddExercisesSheet visible={visible} userId="test" selectedIds={[]} onClose={onClose} onDone={onDone} />
+  );
+  const screen = render(picker(true));
+
+  fireEvent.press(screen.getByText('+ Create exercise'));
+  fireEvent.changeText(screen.getByPlaceholderText('e.g. Wide-Grip Cable Row'), 'Old Exercise');
+  fireEvent.press(await screen.findByText('Chest'));
+  fireEvent.press(screen.getByText('Barbell'));
+  fireEvent.press(screen.getAllByText('Create exercise')[1]);
+  await waitFor(() => expect(supabase.rpc).toHaveBeenCalledTimes(1));
+
+  // Leave while saving, close the picker, and start another session.
+  fireEvent.press(screen.getByLabelText('Back to exercise selection'));
+  fireEvent.press(screen.getByText('Cancel'));
+  expect(onClose).toHaveBeenCalledTimes(1);
+  screen.rerender(picker(false));
+  screen.rerender(picker(true));
+  fireEvent.press(screen.getByText('+ Create exercise'));
+  fireEvent.changeText(screen.getByPlaceholderText('e.g. Wide-Grip Cable Row'), 'New Exercise');
+
+  await act(async () => {
+    finishCreation({ data: 'd853b341-eac2-4397-8494-b2f7d76b9fba', error: null });
+  });
+
+  // The old completion cannot close the new create form or select the old exercise.
+  expect(screen.getByPlaceholderText('e.g. Wide-Grip Cable Row').props.value).toBe('New Exercise');
+  fireEvent.press(screen.getByLabelText('Back to exercise selection'));
+  expect(screen.getByText('Add (0)')).toBeTruthy();
+  expect(screen.queryByText('Old Exercise')).toBeNull();
+  expect(onDone).not.toHaveBeenCalled();
 });
