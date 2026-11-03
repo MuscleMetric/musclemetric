@@ -89,6 +89,17 @@ export function getLoggingType(exercise: ExerciseLike): LoggingType {
     return "bodyweight_weighted";
   }
 
+  // Crunches performed against cable or machine resistance need weight + reps.
+  // Also recognize "Cable Crunch" by name when equipment is unavailable.
+  if (
+    name.includes("crunch") &&
+    (name.includes("cable") ||
+      equipment.includes("cable") ||
+      equipment.includes("machine"))
+  ) {
+    return "strength";
+  }
+
   // Bodyweight keyword fallback
   if (includesKeyword(name, BODYWEIGHT_KEYWORDS)) {
     return "bodyweight";
