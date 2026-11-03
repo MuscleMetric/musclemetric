@@ -49,6 +49,24 @@ describe("exerciseLoggingProfile", () => {
       ).toBe("assisted");
     });
 
+    it.each([
+      ["Cable Crunch", "cable"],
+      ["Cable Crunch (Rope)", "cable"],
+      ["Cable Crunch", null],
+      ["Machine Ab Crunch", "machine"],
+    ])("logs %s with %s equipment as strength", (name, equipment) => {
+      expect(
+        getLoggingType({ name, type: "strength", equipment }),
+      ).toBe("strength");
+    });
+
+    it("keeps unweighted crunches as bodyweight", () => {
+      expect(
+        getLoggingType({ name: "Crunch", equipment: "bodyweight" }),
+      ).toBe("bodyweight_weighted");
+      expect(getLoggingType({ name: "Crunch" })).toBe("bodyweight");
+    });
+
     it("defaults bench press to strength", () => {
       expect(
         getLoggingType({
@@ -57,6 +75,21 @@ describe("exerciseLoggingProfile", () => {
         }),
       ).toBe("strength");
     });
+  });
+
+  it("allows weight and reps for cable crunches", () => {
+    const profile = getExerciseLoggingProfile({
+      name: "Cable Crunch",
+      equipment: "cable",
+      type: "strength",
+    });
+
+    expect(profile.loggingType).toBe("strength");
+    expect(profile.supportsWeight).toBe(true);
+    expect(profile.supportsReps).toBe(true);
+    expect(profile.supportsTime).toBe(false);
+    expect(profile.canComputeVolume).toBe(true);
+    expect(hasCompletedSet(profile, { weight: 30, reps: 12 })).toBe(true);
   });
 
   describe("hasCompletedSet", () => {
