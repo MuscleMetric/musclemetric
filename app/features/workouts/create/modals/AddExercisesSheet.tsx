@@ -1,5 +1,5 @@
 // app/features/workouts/create/modals/AddExercisesSheet.tsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -104,8 +104,18 @@ export default function AddExercisesSheet({
   const [createSaving, setCreateSaving] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
 
+  // Every creation attempt belongs to one picker session. Ignore responses
+  // from a session the user has left (or a request they have superseded).
+  const creationEpochRef = useRef(0);
+
+  useEffect(() => () => {
+    creationEpochRef.current += 1;
+  }, []);
+
   const exitCreate = useCallback(() => {
+    creationEpochRef.current += 1;
     setCreateMode(false);
+    setCreateSaving(false);
     setCreateError(null);
   }, []);
 
@@ -116,6 +126,7 @@ export default function AddExercisesSheet({
   const [picked, setPicked] = useState<Map<string, { exerciseId: string; name: string }>>(new Map());
 
   useEffect(() => {
+    creationEpochRef.current += 1;
     if (!visible) return;
 
     // reset modal state each open
@@ -131,6 +142,7 @@ export default function AddExercisesSheet({
     setCreateDescription("");
     setCreateEquipment(null);
     setCreateMuscles([]);
+    setCreateSaving(false);
     setCreateError(null);
   }, [visible]);
 
@@ -210,6 +222,7 @@ export default function AddExercisesSheet({
     }
     if (!userId) return setCreateError("Sign in to create an exercise.");
 
+    const requestEpoch = ++creationEpochRef.current;
     setCreateSaving(true);
     setCreateError(null);
     try {
@@ -219,6 +232,9 @@ export default function AddExercisesSheet({
         p_muscle_ids: createMuscles,
         p_instructions: createDescription.trim() || null,
       });
+      // The request can finish after Back, picker close, or a new session.
+      // Never let that old result select an exercise or dismiss the new form.
+      if (requestEpoch !== creationEpochRef.current) return;
       if (error) throw error;
       if (typeof data !== "string" || !/^[a-f0-9-]{36}$/i.test(data)) {
         throw new Error("The exercise was not returned correctly.");
@@ -242,9 +258,11 @@ export default function AddExercisesSheet({
       setPickerMode(null);
       exitCreate();
     } catch (error) {
-      setCreateError(error instanceof Error ? error.message : "Couldn’t create exercise. Try again.");
+      if (requestEpoch === creationEpochRef.current) {
+        setCreateError(error instanceof Error ? error.message : "Couldn’t create exercise. Try again.");
+      }
     } finally {
-      setCreateSaving(false);
+      if (requestEpoch === creationEpochRef.current) setCreateSaving(false);
     }
   };
 
@@ -475,7 +493,7 @@ export default function AddExercisesSheet({
   const createPanel = (
     <View style={{ flex: 1 }}>
       <View style={styles.header}>
-        <Pressable onPress={exitCreate} hitSlop={12} style={styles.headerIconBtn}>
+        <Pressable onPress={exitCreate} hitSlop={12} style={styles.headerIconBtn} accessibilityLabel="Back to exercise selection">
           <Icon name="chevron-back" size={22} color={colors.text} />
         </Pressable>
         <Text style={styles.headerTitle}>Create exercise</Text>
