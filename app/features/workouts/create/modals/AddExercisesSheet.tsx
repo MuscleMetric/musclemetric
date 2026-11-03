@@ -1,5 +1,5 @@
 // app/features/workouts/create/modals/AddExercisesSheet.tsx
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import {
   Modal,
   SafeAreaView,
   Platform,
+  ActivityIndicator,
 } from "react-native";
 import { Pill, Icon } from "@/ui";
 import { useAppTheme } from "../../../../../lib/useAppTheme";
@@ -88,7 +89,35 @@ export default function AddExercisesSheet({
   const [pickerMode, setPickerMode] = useState<PickerMode>(null);
 
   const [loading, setLoading] = useState(false);
+
   const [items, setItems] = useState<ExerciseListItem[]>([]);
+
+  // Keep just-created exercises visible even when an older catalogue request finishes.
+  const [createdItems, setCreatedItems] = useState<ExerciseListItem[]>([]);
+  const [createMode, setCreateMode] = useState(false);
+  const [createName, setCreateName] = useState("");
+  const [createDescription, setCreateDescription] = useState("");
+  const [createEquipment, setCreateEquipment] = useState<string | null>(null);
+  const [createMuscles, setCreateMuscles] = useState<number[]>([]);
+  const [muscleOptions, setMuscleOptions] = useState<Array<{ id: number; name: string }>>([]);
+  const [loadingMuscles, setLoadingMuscles] = useState(false);
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
+
+  // Every creation attempt belongs to one picker session. Ignore responses
+  // from a session the user has left (or a request they have superseded).
+  const creationEpochRef = useRef(0);
+
+  useEffect(() => () => {
+    creationEpochRef.current += 1;
+  }, []);
+
+  const exitCreate = useCallback(() => {
+    creationEpochRef.current += 1;
+    setCreateMode(false);
+    setCreateSaving(false);
+    setCreateError(null);
+  }, []);
 
   // locked = already in workout (disabled)
   const locked = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -97,6 +126,7 @@ export default function AddExercisesSheet({
   const [picked, setPicked] = useState<Map<string, { exerciseId: string; name: string }>>(new Map());
 
   useEffect(() => {
+    creationEpochRef.current += 1;
     if (!visible) return;
 
     // reset modal state each open
@@ -106,6 +136,14 @@ export default function AddExercisesSheet({
     setEquipment(null);
     setPickerMode(null);
     setPicked(new Map());
+    setCreatedItems([]);
+    setCreateMode(false);
+    setCreateName("");
+    setCreateDescription("");
+    setCreateEquipment(null);
+    setCreateMuscles([]);
+    setCreateSaving(false);
+    setCreateError(null);
   }, [visible]);
 
   useEffect(() => {
@@ -143,6 +181,91 @@ export default function AddExercisesSheet({
     };
   }, [visible, userId, query, favouritesOnly, muscle, equipment]);
 
+
+  // Same authenticated muscle catalogue and private-exercise RPC used by live Add exercises.
+  useEffect(() => {
+    if (!visible || !createMode) return;
+    let cancelled = false;
+    setLoadingMuscles(true);
+    setCreateError(null);
+
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from("muscles")
+          .select("id,name")
+          .order("name", { ascending: true });
+        if (error) throw error;
+        if (!cancelled) {
+          setMuscleOptions((data ?? []).map((m) => ({ id: Number(m.id), name: String(m.name) })));
+        }
+      } catch {
+        if (!cancelled) {
+          setMuscleOptions([]);
+          setCreateError("Couldn’t load muscles. Go back and try again.");
+        }
+      } finally {
+        if (!cancelled) setLoadingMuscles(false);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [visible, createMode]);
+
+  const submitCreate = async () => {
+    if (createSaving) return;
+    const name = createName.trim();
+    if (name.length < 2) return setCreateError("Enter a name with at least 2 characters.");
+    if (!createEquipment) return setCreateError("Select equipment.");
+    if (createMuscles.length < 1 || createMuscles.length > 3) {
+      return setCreateError("Select 1 to 3 muscles.");
+    }
+    if (!userId) return setCreateError("Sign in to create an exercise.");
+
+    const requestEpoch = ++creationEpochRef.current;
+    setCreateSaving(true);
+    setCreateError(null);
+    try {
+      const { data, error } = await supabase.rpc("create_private_exercise", {
+        p_name: name,
+        p_equipment: createEquipment,
+        p_muscle_ids: createMuscles,
+        p_instructions: createDescription.trim() || null,
+      });
+      // The request can finish after Back, picker close, or a new session.
+      // Never let that old result select an exercise or dismiss the new form.
+      if (requestEpoch !== creationEpochRef.current) return;
+      if (error) throw error;
+      if (typeof data !== "string" || !/^[a-f0-9-]{36}$/i.test(data)) {
+        throw new Error("The exercise was not returned correctly.");
+      }
+
+      const created: ExerciseListItem = {
+        id: data,
+        name,
+        equipment: createEquipment,
+        muscleNames: muscleOptions.filter((m) => createMuscles.includes(m.id)).map((m) => m.name),
+        isFavourite: false,
+        sessionsCount: 0,
+      };
+      setCreatedItems((prev) => [created, ...prev.filter((x) => x.id !== created.id)]);
+      setPicked((prev) => new Map(prev).set(created.id, { exerciseId: created.id, name }));
+      // Clear catalogue filters so the new selection is immediately visible.
+      setQuery("");
+      setFavouritesOnly(false);
+      setMuscle(null);
+      setEquipment(null);
+      setPickerMode(null);
+      exitCreate();
+    } catch (error) {
+      if (requestEpoch === creationEpochRef.current) {
+        setCreateError(error instanceof Error ? error.message : "Couldn’t create exercise. Try again.");
+      }
+    } finally {
+      if (requestEpoch === creationEpochRef.current) setCreateSaving(false);
+    }
+  };
+
   const togglePicked = useCallback(
     (item: ExerciseListItem) => {
       const id = item.id;
@@ -170,15 +293,14 @@ export default function AddExercisesSheet({
 
   const toggleFavourite = useCallback(
     async (exerciseId: string) => {
-      const current = items.find((x) => x.id === exerciseId);
+      const current = [...createdItems, ...items].find((x) => x.id === exerciseId);
       const nowFav = !(current?.isFavourite ?? false);
 
       // optimistic
-      setItems((prev) =>
-        prev.map((x) =>
-          x.id === exerciseId ? { ...x, isFavourite: nowFav } : x
-        )
-      );
+      const markFavourite = (prev: ExerciseListItem[], isFavourite: boolean) =>
+        prev.map((x) => x.id === exerciseId ? { ...x, isFavourite } : x);
+      setItems((prev) => markFavourite(prev, nowFav));
+      setCreatedItems((prev) => markFavourite(prev, nowFav));
 
       try {
         if (nowFav) {
@@ -196,15 +318,12 @@ export default function AddExercisesSheet({
         }
       } catch (e) {
         // rollback
-        setItems((prev) =>
-          prev.map((x) =>
-            x.id === exerciseId ? { ...x, isFavourite: !nowFav } : x
-          )
-        );
+        setItems((prev) => markFavourite(prev, !nowFav));
+        setCreatedItems((prev) => markFavourite(prev, !nowFav));
         console.warn("toggleFavourite failed:", e);
       }
     },
-    [items, userId]
+    [items, createdItems, userId]
   );
 
   // sort: locked first, then picked, then rest
@@ -215,7 +334,16 @@ export default function AddExercisesSheet({
       return 2;
     };
 
-    return [...items].sort((a, b) => {
+    const matchesCreatedFilters = (item: ExerciseListItem) =>
+      (!query || item.name.toLowerCase().includes(query.trim().toLowerCase())) &&
+      (!equipment || (item.equipment ?? "").toLowerCase().includes(equipment.toLowerCase())) &&
+      (!muscle || (item.muscleNames ?? []).some((m) => m.toLowerCase().includes(muscle.toLowerCase()))) &&
+      (!favouritesOnly || !!item.isFavourite);
+    const byId = new Map(items.map((item) => [item.id, item]));
+    for (const item of createdItems) {
+      if (matchesCreatedFilters(item)) byId.set(item.id, item);
+    }
+    return [...byId.values()].sort((a, b) => {
       const sa = score(a.id);
       const sb = score(b.id);
       if (sa !== sb) return sa - sb;
@@ -227,7 +355,7 @@ export default function AddExercisesSheet({
 
       return a.name.localeCompare(b.name);
     });
-  }, [items, locked, picked]);
+  }, [items, createdItems, locked, picked, query, equipment, muscle, favouritesOnly]);
 
   const setPicker = (mode: PickerMode) => {
     setPickerMode((prev) => (prev === mode ? null : mode));
@@ -362,15 +490,116 @@ export default function AddExercisesSheet({
     </View>
   );
 
+  const createPanel = (
+    <View style={{ flex: 1 }}>
+      <View style={styles.header}>
+        <Pressable onPress={exitCreate} hitSlop={12} style={styles.headerIconBtn} accessibilityLabel="Back to exercise selection">
+          <Icon name="chevron-back" size={22} color={colors.text} />
+        </Pressable>
+        <Text style={styles.headerTitle}>Create exercise</Text>
+        <View style={styles.headerIconBtn} />
+      </View>
+      <ScrollView
+        style={{ flex: 1 }}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ padding: 16, paddingBottom: FOOTER_H + 32, gap: 16 }}
+      >
+        <View>
+          <Text style={{ color: colors.text, fontWeight: "700", marginBottom: 8 }}>Name</Text>
+          <TextInput
+            value={createName}
+            onChangeText={setCreateName}
+            placeholder="e.g. Wide-Grip Cable Row"
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { flex: 0, borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, backgroundColor: colors.surface }]}
+            autoCapitalize="words"
+            accessibilityLabel="Exercise name"
+          />
+        </View>
+        <View>
+          <Text style={{ color: colors.text, fontWeight: "700", marginBottom: 8 }}>Description (optional)</Text>
+          <TextInput
+            value={createDescription}
+            onChangeText={setCreateDescription}
+            placeholder="Setup, cues or notes"
+            placeholderTextColor={colors.textMuted}
+            style={[styles.searchInput, { flex: 0, minHeight: 76, textAlignVertical: "top", borderWidth: 1, borderColor: colors.border, borderRadius: 12, padding: 12, backgroundColor: colors.surface }]}
+            multiline
+            accessibilityLabel="Exercise description"
+          />
+        </View>
+        <View>
+          <Text style={{ color: colors.text, fontWeight: "700", marginBottom: 8 }}>
+            Muscles (select up to 3)
+          </Text>
+          {loadingMuscles ? <ActivityIndicator /> : (
+            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+              {muscleOptions.map((m) => {
+                const active = createMuscles.includes(m.id);
+                return (
+                  <Pressable
+                    key={m.id}
+                    onPress={() => setCreateMuscles((prev) =>
+                      active ? prev.filter((id) => id !== m.id) : prev.length < 3 ? [...prev, m.id] : prev
+                    )}
+                    accessibilityRole="checkbox"
+                    accessibilityState={{ checked: active }}
+                  >
+                    <Pill label={m.name} tone={active ? "primary" : "neutral"} />
+                  </Pressable>
+                );
+              })}
+            </View>
+          )}
+        </View>
+        <View>
+          <Text style={{ color: colors.text, fontWeight: "700", marginBottom: 8 }}>Equipment</Text>
+          <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>
+            {EQUIP_OPTIONS.map((eq) => (
+              <Pressable
+                key={eq.key}
+                onPress={() => setCreateEquipment(eq.key)}
+                accessibilityRole="radio"
+                accessibilityState={{ checked: createEquipment === eq.key }}
+              >
+                <Pill label={eq.label} tone={createEquipment === eq.key ? "primary" : "neutral"} />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+        <Text style={{ color: colors.textMuted, fontSize: 12 }}>
+          Custom strength exercises are private to your account.
+        </Text>
+        {createError ? (
+          <Text accessibilityRole="alert" style={{ color: colors.primary, fontSize: 13 }}>
+            {createError}
+          </Text>
+        ) : null}
+      </ScrollView>
+      <View style={[styles.stickyFooter, { minHeight: FOOTER_H }] }>
+        <Pressable
+          onPress={submitCreate}
+          disabled={createSaving || loadingMuscles}
+          style={[styles.primaryBtn, { flex: 1 }, createSaving || loadingMuscles ? styles.primaryBtnDisabled : null]}
+        >
+          {createSaving ? <ActivityIndicator /> : null}
+          <Text style={styles.primaryText}>Create exercise</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+
   return (
     <Modal
       visible={visible}
       animationType="slide"
       presentationStyle="fullScreen"
-      onRequestClose={closeModal}
+      onRequestClose={createMode ? exitCreate : closeModal}
     >
       <SafeAreaView style={[styles.screen, { minHeight: windowH }]}>
-        {header}
+        {createMode ? createPanel : (
+          <>
+            {header}
 
         <View style={styles.body}>
           {/* Search */}
@@ -400,6 +629,21 @@ export default function AddExercisesSheet({
           {pickerMode ? (
             <View style={{ marginTop: layout.space.md }}>{pickerPanel}</View>
           ) : null}
+
+          {/* Keep existing picker and use the authenticated private-exercise RPC to create. */}
+          <Pressable
+            onPress={() => {
+              setCreateName("");
+              setCreateDescription("");
+              setCreateEquipment(null);
+              setCreateMuscles([]);
+              setCreateError(null);
+              setCreateMode(true);
+            }}
+            style={[styles.secondaryBtn, { alignSelf: "flex-start", marginTop: layout.space.md }]}
+          >
+            <Text style={styles.secondaryText}>+ Create exercise</Text>
+          </Pressable>
 
           {/* List */}
           <View style={{ flex: 1, marginTop: layout.space.md }}>
@@ -511,6 +755,8 @@ export default function AddExercisesSheet({
             </Pressable>
           </View>
         </View>
+          </>
+        )}
       </SafeAreaView>
     </Modal>
   );
