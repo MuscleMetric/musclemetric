@@ -59,6 +59,7 @@ export function buildDraftFromBootstrap(args: {
 
       prescription: ex.prescription,
       lastSession: ex.lastSession,
+      historyResolved: true,
       bestE1rm6m: ex.bestE1rm6m ?? null,
       bestSet6m: ex.bestSet6m ?? null,
       totalVolumeAllTime: ex.totalVolumeAllTime,
