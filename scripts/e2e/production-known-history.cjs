@@ -194,19 +194,7 @@ async function prepare() {
     }, "Tester account is not empty; refuse to touch or delete existing records");
     assert.equal(profile.active_plan_id, null, "Preexisting active plan; refusing test");
 
-    const historyStats = unwrap(await client.rpc("get_live_exercise_history_stats", {
-    p_exercise_ids: [state.exerciseIds.strength], p_preferred_workout_id: null,
-    p_expected_user_id: state.userId,
-  }), "Quick Start history and best set on production");
-  assert.equal(historyStats.length, 1);
-  const stats = historyStats[0];
-  exact(stats.last_session?.sets?.[0]?.weight, 50, "Quick Start last weight");
-  exact(stats.last_session?.sets?.[0]?.reps, 8, "Quick Start last reps");
-  exact(stats.best_set_6m?.weight, 100, "Quick Start best weight");
-  exact(stats.best_set_6m?.reps, 5, "Quick Start best reps");
-  near(stats.best_set_6m?.e1rm, 100 * (1 + 5 / 30), "Quick Start best e1RM");
-
-  const progress = unwrap(await client.rpc("get_progress_overview"), "Empty progress");
+    const progress = unwrap(await client.rpc("get_progress_overview"), "Empty progress");
     exact(progress.meta?.workouts_total, 0, "Empty progress count");
     const strength = unwrap(await client.from("exercises")
       .select("id").eq("is_public", true).eq("type", "strength")
@@ -304,6 +292,18 @@ async function verifyHistory(client, state, expected = { workouts: 3, volume: 12
   exact(volume, expected.volume, "Stored lifting volume");
   near(distance, expected.distance, "Stored distance");
   exact(seconds, expected.seconds, "Stored cardio time");
+
+  const historyStats = unwrap(await client.rpc("get_live_exercise_history_stats", {
+    p_exercise_ids: [state.exerciseIds.strength], p_preferred_workout_id: null,
+    p_expected_user_id: state.userId,
+  }), "Quick Start history and best set on production");
+  assert.equal(historyStats.length, 1);
+  const stats = historyStats[0];
+  exact(stats.last_session?.sets?.[0]?.weight, 50, "Quick Start last weight");
+  exact(stats.last_session?.sets?.[0]?.reps, 8, "Quick Start last reps");
+  exact(stats.best_set_6m?.weight, 100, "Quick Start best weight");
+  exact(stats.best_set_6m?.reps, 5, "Quick Start best reps");
+  near(stats.best_set_6m?.e1rm, 100 * (1 + 5 / 30), "Quick Start best e1RM");
 
   const progress = unwrap(await client.rpc("get_progress_overview"), "Read real progress");
   assert.equal(progress.meta?.user_id, state.userId, "Progress user");
