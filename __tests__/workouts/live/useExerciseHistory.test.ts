@@ -1,3 +1,4 @@
+import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders/buildEmptyQuickStartDraft";
 import { AppState } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { supabase } from "@/lib/supabase";
@@ -65,7 +66,6 @@ test("ignores an in-flight result after the active account changes", async () =>
 });
 
 test("adding a lift to Quick Start loads both references, including a draft marked resolved by the older app", async () => {
-  const { buildEmptyQuickStartDraft } = await import("@/app/features/workouts/live/builders/buildEmptyQuickStartDraft");
   const quickStart = buildEmptyQuickStartDraft({ userId: "alice" });
   rpc.mockResolvedValue({ data: [{ exercise_id: "row", last_session: history, best_set_6m: best }] });
   const update = jest.fn();
