@@ -1,0 +1,16 @@
+appId: com.musclemetric.app.e2e
+---
+- tapOn:
+    id: workout-review
+- extendedWaitUntil:
+    visible:
+      id: workout-save
+    timeout: 10000
+- tapOn:
+    id: workout-save
+- assertVisible: Save workout\?
+- tapOn: Save
+- extendedWaitUntil:
+    visible: Workout saved
+    timeout: 30000
+- tapOn: Not now

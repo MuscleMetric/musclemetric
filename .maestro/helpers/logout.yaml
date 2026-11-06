@@ -1,0 +1,14 @@
+appId: com.musclemetric.app.e2e
+---
+- openLink: musclemetric://features/settings
+- scrollUntilVisible:
+    element:
+      text: Log Out
+    direction: DOWN
+- tapOn: Log Out
+- tapOn:
+    id: logout-confirm
+- extendedWaitUntil:
+    visible:
+      id: e2e-email
+    timeout: 30000
