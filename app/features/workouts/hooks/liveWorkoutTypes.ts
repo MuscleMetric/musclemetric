@@ -94,6 +94,7 @@ export type LiveExerciseDraft = {
 
   prescription: WorkoutLoadPayload["exercises"][number]["prescription"];
   historyResolved?: boolean;
+  historyStatsResolved?: boolean;
   lastSession: WorkoutLoadPayload["exercises"][number]["lastSession"];
   bestE1rm6m: number | null;
   bestSet6m: {

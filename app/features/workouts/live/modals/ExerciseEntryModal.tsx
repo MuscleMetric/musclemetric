@@ -8,6 +8,7 @@ import {
   Platform,
   Keyboard,
   TextInput,
+  Text,
   ScrollView,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -48,6 +49,7 @@ import {
 import { parseNullableNumber } from "./helpers/cardio";
 
 export function ExerciseEntryModal(props: {
+  historyLoadFailed?: boolean;
   visible: boolean;
   onClose: () => void;
   draft: LiveWorkoutDraft;
@@ -517,6 +519,10 @@ export function ExerciseEntryModal(props: {
                   }}
                 />
               ) : null}
+
+              {props.historyLoadFailed && !exercise?.historyStatsResolved && (
+                <Text style={{ color: colors.textMuted, paddingHorizontal: 16 }}>Couldn’t load exercise history. Reopen the workout to retry.</Text>
+              )}
 
               {loggingProfile?.canComputeVolume ||
               loggingProfile?.canComputeE1rm || targets.length > 0 ? (
