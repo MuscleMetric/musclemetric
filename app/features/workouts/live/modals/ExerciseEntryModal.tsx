@@ -116,6 +116,11 @@ export function ExerciseEntryModal(props: {
     loggingProfile?.loggingType === "bodyweight_weighted" ||
     loggingProfile?.loggingType === "assisted";
 
+  const targets = (props.draft.sessionTargets?.[exercise?.exerciseId ?? ""] ?? []).filter(target =>
+    loggingProfile?.supportsReps && (target.weight == null ||
+      (loggingProfile.supportsWeight && !loggingProfile.supportsAssistance))
+  );
+
   const baseSetCount = useMemo(() => {
     if (!exercise) return 1;
     return getBaseSetCount(exercise);
@@ -514,10 +519,14 @@ export function ExerciseEntryModal(props: {
               ) : null}
 
               {loggingProfile?.canComputeVolume ||
-              loggingProfile?.canComputeE1rm ? (
+              loggingProfile?.canComputeE1rm || targets.length > 0 ? (
                 <StrengthStatsCards
                   colors={colors}
                   typography={typography}
+                  targets={targets}
+                  sets={exercise?.sets ?? []}
+                  compareStrength={!!loggingProfile?.canComputeE1rm}
+                  showVolume={!!loggingProfile?.canComputeVolume}
                   sessionVolume={sessionVolume}
                   bestNow={
                     bestNow

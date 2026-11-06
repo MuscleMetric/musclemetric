@@ -14,6 +14,7 @@ import { useAppTheme } from "@/lib/useAppTheme";
 import { Card, LoadingScreen, ErrorState } from "@/ui";
 
 import type { LiveWorkoutDraft } from "./state/types";
+import { useSessionTargets } from "./useSessionTargets";
 import { useExerciseHistory } from "./useExerciseHistory";
 import { bootLiveDraft } from "./boot/bootLiveDraft";
 import { usePersistDraft } from "./persist/usePersistDraft";
@@ -474,6 +475,7 @@ export default function LiveWorkoutScreen() {
   }, [persist]);
 
   useExerciseHistory(draft, uid, update);
+  useSessionTargets(draft, uid, update);
 
   function openExerciseAt(index: number) {
     update((d) => openExercise(d, index));

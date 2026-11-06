@@ -10,53 +10,22 @@ import {
 import { router, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { supabase } from "@/lib/supabase";
 import { useAppTheme } from "@/lib/useAppTheme";
 
-type Metric = "weight" | "reps" | "distance" | "time";
-
-type GoalRow = {
-  id: string;
-  exercise_id: string;
-  metrics: Metric[] | null;
-  goal_summary: string | null;
-
-  start_weight: number | null;
-  start_reps: number | null;
-  start_distance: number | null;
-  start_time_seconds: number | null;
-
-  target_weight: number | null;
-  target_reps: number | null;
-  target_distance: number | null;
-  target_time_seconds: number | null;
-
-  exercises?:
-    | {
-        name: string;
-      }[]
-    | null;
-};
-
-type PlanRow = {
-  id: string;
-  title: string;
-  start_date: string | null;
-  end_date: string | null;
-};
-
-type PlanWorkoutRow = {
-  id: string;
-  title: string;
-  order_index: number | null;
-  workout_id: string;
-};
-
-type WorkoutExerciseRow = {
-  workout_id: string;
-  exercise_id: string;
-  order_index: number;
-};
+import {
+  formatMetric,
+  getMetricValue,
+  matchingWorkouts,
+  positive,
+  roadmapWeeks,
+  sessionMetric,
+  type GoalRow,
+  type Metric,
+  type PlanRow,
+  type PlanWorkoutRow,
+  type WorkoutExerciseRow,
+} from "@/lib/plans/goalRoadmap";
+import { loadGoalRoadmap } from "@/lib/plans/loadGoalRoadmap";
 
 const METRIC_LABEL: Record<Metric, string> = {
   weight: "Weight",
@@ -81,6 +50,7 @@ export default function GoalRoadmap() {
     [colors, typography, layout],
   );
 
+  const [failed, setFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [plan, setPlan] = useState<PlanRow | null>(null);
   const [goals, setGoals] = useState<GoalRow[]>([]);
@@ -97,70 +67,19 @@ export default function GoalRoadmap() {
     async function load() {
       setLoading(true);
 
-      const [planRes, goalsRes, planWorkoutsRes] = await Promise.all([
-        supabase
-          .from("plans")
-          .select("id,title,start_date,end_date")
-          .eq("id", planId)
-          .maybeSingle(),
-
-        supabase
-          .from("goals")
-          .select(
-            `
-            id,
-            exercise_id,
-            metrics,
-            goal_summary,
-            start_weight,
-            start_reps,
-            start_distance,
-            start_time_seconds,
-            target_weight,
-            target_reps,
-            target_distance,
-            target_time_seconds,
-            exercises:exercise_id(name)
-          `,
-          )
-          .eq("plan_id", planId)
-          .eq("is_active", true),
-
-        supabase
-          .from("plan_workouts")
-          .select("id,title,order_index,workout_id")
-          .eq("plan_id", planId)
-          .eq("is_archived", false)
-          .order("order_index", { ascending: true }),
-      ]);
-
-      if (!mounted) return;
-
-      const loadedPlanWorkouts = (planWorkoutsRes.data ??
-        []) as PlanWorkoutRow[];
-
-      const workoutIds = loadedPlanWorkouts.map((w) => w.workout_id);
-
-      let exerciseRows: WorkoutExerciseRow[] = [];
-
-      if (workoutIds.length > 0) {
-        const workoutExercisesRes = await supabase
-          .from("workout_exercises")
-          .select("workout_id,exercise_id,order_index")
-          .in("workout_id", workoutIds)
-          .eq("is_archived", false)
-          .order("order_index", { ascending: true });
-
-        exerciseRows = (workoutExercisesRes.data ?? []) as WorkoutExerciseRow[];
+      setFailed(false);
+      try {
+        const data = await loadGoalRoadmap(planId!);
+        if (!mounted) return;
+        setPlan(data.plan);
+        setGoals(data.goals);
+        setPlanWorkouts(data.workouts);
+        setWorkoutExercises(data.exercises);
+      } catch {
+        if (mounted) setFailed(true);
+      } finally {
+        if (mounted) setLoading(false);
       }
-
-      if (!mounted) return;
-
-      setPlan((planRes.data ?? null) as PlanRow | null);
-      setGoals((goalsRes.data ?? []) as unknown as GoalRow[]);
-      setPlanWorkouts(loadedPlanWorkouts);
-      setWorkoutExercises(exerciseRows);
-      setLoading(false);
     }
 
     load();
@@ -170,36 +89,29 @@ export default function GoalRoadmap() {
     };
   }, [planId]);
 
-  const weeks = useMemo(() => {
-    if (!plan?.start_date || !plan?.end_date) return 1;
-
-    const start = new Date(plan.start_date);
-    const end = new Date(plan.end_date);
-    const diff = end.getTime() - start.getTime();
-    const rawWeeks = diff / (1000 * 60 * 60 * 24 * 7);
-
-    return Math.max(1, Math.ceil(rawWeeks));
-  }, [plan]);
-
+  const weeks = roadmapWeeks(plan);
   const workoutsByExercise = useMemo(() => {
     const map = new Map<string, PlanWorkoutRow[]>();
 
     for (const goal of goals) {
-      const matchingWorkoutIds = new Set(
-        workoutExercises
-          .filter((we) => we.exercise_id === goal.exercise_id)
-          .map((we) => we.workout_id),
+      map.set(
+        goal.exercise_id,
+        matchingWorkouts(goal.exercise_id, planWorkouts, workoutExercises),
       );
-
-      const matchingWorkouts = planWorkouts.filter((pw) =>
-        matchingWorkoutIds.has(pw.workout_id),
-      );
-
-      map.set(goal.exercise_id, matchingWorkouts);
     }
 
     return map;
   }, [goals, planWorkouts, workoutExercises]);
+
+  if (failed)
+    return (
+      <SafeAreaView style={[s.page, s.center]}>
+        <Text style={s.muted}>Couldn’t load the goal roadmap.</Text>
+        <Pressable onPress={() => router.back()}>
+          <Text style={s.muted}>Go back</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
 
   if (loading) {
     return (
@@ -327,52 +239,10 @@ function metricTargetText(
   sessionIndex: number,
   totalSessions: number,
 ) {
-  const start = getMetricValue(goal, metric, "start");
-  const target = getMetricValue(goal, metric, "target");
-
-  if (!positive(start) || !positive(target)) {
-    return `${METRIC_LABEL[metric]} incomplete`;
-  }
-
-  const safeStart = start as number;
-  const safeTarget = target as number;
-
-  const progress =
-    totalSessions <= 1
-      ? 1
-      : (sessionIndex - 1) / Math.max(1, totalSessions - 1);
-
-  const value = safeStart + (safeTarget - safeStart) * progress;
-
-  return `${METRIC_LABEL[metric]} ${formatMetric(metric, value)}${
-    METRIC_UNIT[metric]
-  }`;
-}
-
-function getMetricValue(
-  goal: GoalRow,
-  metric: Metric,
-  side: "start" | "target",
-) {
-  const key =
-    `${side}_${metric === "time" ? "time_seconds" : metric}` as keyof GoalRow;
-  const value = goal[key];
-
-  return typeof value === "number" ? value : null;
-}
-
-function formatMetric(metric: Metric, value: number) {
-  if (metric === "weight") return roundToNearest(value, 2.5).toString();
-  if (metric === "distance") return Number(value.toFixed(2)).toString();
-  return Math.round(value).toString();
-}
-
-function roundToNearest(value: number, step: number) {
-  return Math.round(value / step) * step;
-}
-
-function positive(n: number | null | undefined) {
-  return n != null && Number.isFinite(n) && n > 0;
+  const value = sessionMetric(goal, metric, sessionIndex, totalSessions);
+  return value == null
+    ? `${METRIC_LABEL[metric]} incomplete`
+    : `${METRIC_LABEL[metric]} ${value}${METRIC_UNIT[metric]}`;
 }
 
 function goalSummary(goal: GoalRow) {
