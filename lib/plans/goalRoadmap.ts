@@ -157,6 +157,9 @@ export function targetsForWorkout(
   if (!data.plan) return result;
   const week = sessionWeek(data.plan, startedAt);
   for (const goal of data.goals) {
+    const metrics = goal.metrics ?? [];
+    if (metrics.some((metric) => metric !== "weight" && metric !== "reps"))
+      continue;
     const slots = matchingWorkouts(
       goal.exercise_id,
       data.workouts,
@@ -166,7 +169,6 @@ export function targetsForWorkout(
     if (position < 0) continue;
     const index = (week - 1) * slots.length + position + 1;
     const total = roadmapWeeks(data.plan) * slots.length;
-    const metrics = goal.metrics ?? [];
     const weight = metrics.includes("weight")
       ? sessionMetric(goal, "weight", index, total)
       : null;

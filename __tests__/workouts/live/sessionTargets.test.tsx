@@ -107,6 +107,44 @@ test("live target matches the roadmap slot and skips unrelated exercises and slo
   expect(targetsForWorkout(data, "b", "2026-11-09T12:00:00Z")).toEqual({});
 });
 
+test.each([
+  ["weight", "time"],
+  ["reps", "distance"],
+] as const)(
+  "a %s + %s goal cannot become a partial strength target",
+  (strength, other) => {
+    const goal = {
+      id: "mixed",
+      exercise_id: "exercise",
+      metrics: [strength, other],
+      start_weight: 10,
+      target_weight: 20,
+      start_reps: 5,
+      target_reps: 8,
+      start_time_seconds: 30,
+      target_time_seconds: 45,
+      start_distance: 1,
+      target_distance: 2,
+    } as GoalRow;
+    const data = {
+      plan: {
+        id: "p",
+        title: "Plan",
+        start_date: "2026-11-02",
+        end_date: "2026-11-08",
+      },
+      goals: [goal],
+      workouts: [
+        { id: "slot", workout_id: "w", order_index: 0, title: "Workout" },
+      ],
+      exercises: [
+        { workout_id: "w", exercise_id: goal.exercise_id, order_index: 0 },
+      ],
+    };
+    expect(targetsForWorkout(data, "slot", "2026-11-03T12:00:00Z")).toEqual({});
+  },
+);
+
 test("the live card updates after an edit and restores the historical card without a target", () => {
   const props = {
     colors: {},
