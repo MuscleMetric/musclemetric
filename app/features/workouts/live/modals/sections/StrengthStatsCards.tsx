@@ -3,6 +3,9 @@ import React, { useMemo } from "react";
 import { View, Text } from "react-native";
 import { fmtKg } from "../helpers/format";
 
+import type { StrengthTarget } from "@/lib/plans/goalRoadmap";
+import { targetFeedback, targetLabel } from "../helpers/sessionTarget";
+
 type BestSet6m = {
   completedAt: string | null;
   weight: number | null;
@@ -30,6 +33,10 @@ export function StrengthStatsCards(props: {
   colors: any;
   typography: any;
   sessionVolume: number;
+  targets: StrengthTarget[];
+  sets: Array<{ weight: number | null; reps: number | null }>;
+  compareStrength: boolean;
+  showVolume: boolean;
 
   // session best set (for delta vs best)
   bestNow: { weight: number; reps: number } | null;
@@ -96,51 +103,53 @@ export function StrengthStatsCards(props: {
       }}
     >
       {/* Session Volume */}
-      <View
-        style={{
-          flex: 1,
-          borderWidth: 1,
-          borderColor: colors.border,
-          backgroundColor: colors.surface ?? colors.bg,
-          borderRadius: 18,
-          padding: 14,
-        }}
-      >
-        <Text
-          style={{ color: colors.textMuted, fontSize: typography.size.sub }}
-        >
-          Session Vol
-        </Text>
-
-        <Text
+      {props.showVolume && (
+        <View
           style={{
-            marginTop: 8,
-            fontFamily: typography.fontFamily.bold,
-            fontSize: 26,
-            color: colors.text,
+            flex: 1,
+            borderWidth: 1,
+            borderColor: colors.border,
+            backgroundColor: colors.surface ?? colors.bg,
+            borderRadius: 18,
+            padding: 14,
           }}
-          numberOfLines={1}
         >
-          {Math.round(props.sessionVolume)} kg
-        </Text>
+          <Text
+            style={{ color: colors.textMuted, fontSize: typography.size.sub }}
+          >
+            Session Vol
+          </Text>
 
-        <Text
-          style={{
-            color: colors.textMuted,
-            marginTop: 6,
-            fontSize: typography.size.sub,
-          }}
-          numberOfLines={1}
-        >
-          {props.volDelta == null
-            ? "no last session"
-            : props.volDelta > 0
-            ? `+${Math.round(props.volDelta)}kg vs last`
-            : props.volDelta < 0
-            ? `${Math.round(props.volDelta)}kg vs last`
-            : "matched last"}
-        </Text>
-      </View>
+          <Text
+            style={{
+              marginTop: 8,
+              fontFamily: typography.fontFamily.bold,
+              fontSize: 26,
+              color: colors.text,
+            }}
+            numberOfLines={1}
+          >
+            {Math.round(props.sessionVolume)} kg
+          </Text>
+
+          <Text
+            style={{
+              color: colors.textMuted,
+              marginTop: 6,
+              fontSize: typography.size.sub,
+            }}
+            numberOfLines={1}
+          >
+            {props.volDelta == null
+              ? "no last session"
+              : props.volDelta > 0
+                ? `+${Math.round(props.volDelta)}kg vs last`
+                : props.volDelta < 0
+                  ? `${Math.round(props.volDelta)}kg vs last`
+                  : "matched last"}
+          </Text>
+        </View>
+      )}
 
       {/* Best PR (6 months) */}
       <View
@@ -156,49 +165,77 @@ export function StrengthStatsCards(props: {
         <Text
           style={{ color: colors.textMuted, fontSize: typography.size.sub }}
         >
-          Best (6 mo)
+          {props.targets.length ? "Today’s target" : "Best (6 mo)"}
         </Text>
 
-        <Text
-          style={{
-            marginTop: 8,
-            fontFamily: typography.fontFamily.bold,
-            fontSize: 26,
-            color: colors.text,
-          }}
-          numberOfLines={1}
-        >
-          {headlineE1rm != null ? fmtE1rm(headlineE1rm) : "—"}
-        </Text>
+        {props.targets.length ? (
+          props.targets.map((target) => (
+            <View key={target.goalId} style={{ marginTop: 8, gap: 6 }}>
+              <Text
+                adjustsFontSizeToFit
+                numberOfLines={1}
+                style={{
+                  fontSize: 24,
+                  color: colors.text,
+                  fontFamily: typography.fontFamily.bold,
+                }}
+              >
+                {targetLabel(target)}
+              </Text>
+              <Text
+                style={{
+                  color: colors.textMuted,
+                  fontSize: typography.size.sub,
+                }}
+              >
+                {targetFeedback(target, props.sets, props.compareStrength)}
+              </Text>
+            </View>
+          ))
+        ) : (
+          <>
+            <Text
+              style={{
+                marginTop: 8,
+                fontFamily: typography.fontFamily.bold,
+                fontSize: 26,
+                color: colors.text,
+              }}
+              numberOfLines={1}
+            >
+              {headlineE1rm != null ? fmtE1rm(headlineE1rm) : "—"}
+            </Text>
 
-        {/* Supporting line: show the set + date if we have it */}
-        <Text
-          style={{
-            color: colors.textMuted,
-            marginTop: 6,
-            fontSize: typography.size.sub,
-          }}
-          numberOfLines={1}
-        >
-          {headlineE1rm == null
-            ? "no history"
-            : bestLabel
-            ? bestDate
-              ? `${bestLabel} • ${bestDate}`
-              : bestLabel
-            : "best in last 6 months"}
-        </Text>
+            {/* Supporting line: show the set + date if we have it */}
+            <Text
+              style={{
+                color: colors.textMuted,
+                marginTop: 6,
+                fontSize: typography.size.sub,
+              }}
+              numberOfLines={1}
+            >
+              {headlineE1rm == null
+                ? "no history"
+                : bestLabel
+                  ? bestDate
+                    ? `${bestLabel} • ${bestDate}`
+                    : bestLabel
+                  : "best in last 6 months"}
+            </Text>
 
-        <Text
-          style={{
-            color: colors.textMuted,
-            marginTop: 6,
-            fontSize: typography.size.sub,
-          }}
-          numberOfLines={1}
-        >
-          {vsText}
-        </Text>
+            <Text
+              style={{
+                color: colors.textMuted,
+                marginTop: 6,
+                fontSize: typography.size.sub,
+              }}
+              numberOfLines={1}
+            >
+              {vsText}
+            </Text>
+          </>
+        )}
       </View>
     </View>
   );

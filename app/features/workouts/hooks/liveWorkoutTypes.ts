@@ -1,3 +1,5 @@
+import type { SessionTargets } from "@/lib/plans/goalRoadmap";
+
 export type WorkoutLoadPayload = {
   workout: {
     workoutId: string;
@@ -109,6 +111,7 @@ export type LiveExerciseDraft = {
 
 export type LiveWorkoutDraft = {
   draftId: string;
+  sessionTargets?: SessionTargets;
   userId: string;
 
   workoutId: string | null;
