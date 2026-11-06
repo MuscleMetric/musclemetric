@@ -14,6 +14,7 @@ import { useAppTheme } from "@/lib/useAppTheme";
 import { Card, LoadingScreen, ErrorState } from "@/ui";
 
 import type { LiveWorkoutDraft } from "./state/types";
+import { useExerciseHistory } from "./useExerciseHistory";
 import { bootLiveDraft } from "./boot/bootLiveDraft";
 import { usePersistDraft } from "./persist/usePersistDraft";
 import { clearLiveDraftForUser } from "./persist/local";
@@ -451,12 +452,13 @@ export default function LiveWorkoutScreen() {
     return () => sub.remove();
   }, [persist]);
 
-  function update(mut: (d: LiveWorkoutDraft) => LiveWorkoutDraft) {
+  const update = React.useCallback((mut: (d: LiveWorkoutDraft) => LiveWorkoutDraft) => {
     setDraft((prev) => {
       if (!prev) return prev;
 
       const now = nowIso();
       const next = mut(prev);
+      if (next === prev) return prev;
 
       const stamped: LiveWorkoutDraft = {
         ...next,
@@ -469,7 +471,9 @@ export default function LiveWorkoutScreen() {
       persist(stamped).catch(() => {});
       return stamped;
     });
-  }
+  }, [persist]);
+
+  useExerciseHistory(draft, uid, update);
 
   function openExerciseAt(index: number) {
     update((d) => openExercise(d, index));

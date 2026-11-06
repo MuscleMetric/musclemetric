@@ -519,6 +519,8 @@ export function swapExercise(
 
     // new exercise => last session info + PRs should be cleared until you load them
     lastSession: { completedAt: null, sets: [] },
+    historyResolved: false,
+    bestSet6m: null,
     bestE1rm6m: null,
     totalVolumeAllTime: null,
 
