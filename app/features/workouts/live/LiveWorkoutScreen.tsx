@@ -474,7 +474,7 @@ export default function LiveWorkoutScreen() {
     });
   }, [persist]);
 
-  useExerciseHistory(draft, uid, update);
+  const historyLoadFailed = useExerciseHistory(draft, uid, update);
   useSessionTargets(draft, uid, update);
 
   function openExerciseAt(index: number) {
@@ -848,6 +848,7 @@ export default function LiveWorkoutScreen() {
       />
 
       <ExerciseEntryModal
+        historyLoadFailed={historyLoadFailed}
         visible={sheetOpen}
         onClose={() => setSheetOpen(false)}
         draft={draft}

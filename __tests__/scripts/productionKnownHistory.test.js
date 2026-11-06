@@ -30,3 +30,48 @@ describe("production E2E three-stage fixture safety", () => {
     expect(() => near(8.20001, 8.2, "Cardio km", 0.01)).not.toThrow();
   });
 });
+
+it("prepares an empty tester without querying seeded exercise history", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mm-prepare-"));
+  const manifest = path.join(dir, "state.json");
+  const config = { MM_E2E_STATE_FILE: manifest, E2E_TESTER_EMAIL: "tester@example.test", E2E_TESTER_PASSWORD: "fixture" };
+  const previous = Object.fromEntries(Object.keys(config).map(key => [key, process.env[key]]));
+  const rpc = jest.fn(async name => {
+    if (name !== "get_progress_overview") throw Error("Unexpected preparation RPC: " + name);
+    return { data: { meta: { workouts_total: 0 } } };
+  });
+  const client = {
+    auth: {
+      signInWithPassword: async () => ({ data: { user: { id: "d36d46e6-b8db-4675-843f-262e7141db00" } } }),
+      signOut: jest.fn(),
+    },
+    rpc,
+    from(table) {
+      const result = { count: 0, data: [] };
+      return {
+        ...result, select() { return this; }, eq() { return this; }, order() { return this; },
+        single: async () => ({ data: { username: "tester", active_plan_id: null, settings: {} } }),
+        limit: async () => ({ data: [{ id: table + "-fixture" }] }),
+      };
+    },
+  };
+  try {
+    Object.assign(process.env, config);
+    await jest.isolateModulesAsync(async () => {
+      jest.doMock("@supabase/supabase-js", () => ({ createClient: () => client }));
+      await require("../../scripts/e2e/production-known-history.cjs").stages.prepare();
+    });
+    expect(rpc.mock.calls).toEqual([["get_progress_overview"]]);
+    expect(JSON.parse(fs.readFileSync(manifest, "utf8")).workouts).toHaveLength(4);
+  } finally {
+    jest.dontMock("@supabase/supabase-js");
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

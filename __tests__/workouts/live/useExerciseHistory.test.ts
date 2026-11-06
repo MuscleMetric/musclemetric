@@ -1,3 +1,4 @@
+import { buildEmptyQuickStartDraft } from "@/app/features/workouts/live/builders/buildEmptyQuickStartDraft";
 import { AppState } from "react-native";
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import { supabase } from "@/lib/supabase";
@@ -9,6 +10,7 @@ const rpc = supabase.rpc as jest.Mock;
 beforeEach(() => {
   jest.spyOn(AppState, "addEventListener").mockReturnValue({ remove: jest.fn() });
 });
+const best = { completedAt: "2026-10-20", weight: 110, reps: 6, e1rm: 132 };
 const history = { completedAt: "2026-11-02", sets: [{ reps: 8, weight: 100 }] };
 function draft() {
   return {
@@ -23,7 +25,7 @@ function draft() {
 
 test("batches additions separately from template rows and merges into the current draft", async () => {
   rpc.mockImplementation(async (_name, args) => ({
-    data: args.p_exercise_ids.map((id: string) => ({ exercise_id: id, last_session: history })),
+    data: args.p_exercise_ids.map((id: string) => ({ exercise_id: id, last_session: history, best_set_6m: best })),
   }));
   const original = draft();
   const update = jest.fn();
@@ -41,6 +43,9 @@ test("batches additions separately from template rows and merges into the curren
   expect(result.exercises[0].sets).toBe(edited.exercises[0].sets);
   expect(result.exercises[0].lastSession).toEqual(history);
   expect(result.exercises[1]).toBe(edited.exercises[1]);
+  expect(result.exercises[2].lastSession).toEqual(history);
+  expect(result.exercises[2].bestSet6m).toEqual(best);
+  expect(result.exercises[2].bestE1rm6m).toBe(132);
   expect(result.exercises[2].historyResolved).toBe(true);
   const other = { ...edited, userId: "other" };
   expect(merge(other)).toBe(other);
@@ -56,6 +61,24 @@ test("ignores an in-flight result after the active account changes", async () =>
     initialProps: { user: "alice" },
   });
   rerender({ user: "bob" });
-  await act(async () => { finish({ data: [{ exercise_id: "row", last_session: history }] }); });
+  await act(async () => { finish({ data: [{ exercise_id: "row", last_session: history, best_set_6m: best }] }); });
   expect(update).not.toHaveBeenCalled();
+});
+
+test("adding a lift to Quick Start loads both references, including a draft marked resolved by the older app", async () => {
+  const quickStart = buildEmptyQuickStartDraft({ userId: "alice" });
+  rpc.mockResolvedValue({ data: [{ exercise_id: "row", last_session: history, best_set_6m: best }] });
+  const update = jest.fn();
+  const { rerender } = renderHook<void, LiveWorkoutDraft>(
+    current => useExerciseHistory(current, "alice", update), { initialProps: quickStart });
+  expect(rpc).not.toHaveBeenCalled();
+  const added = { ...quickStart, exercises: [{ ...draft().exercises[1], historyResolved: true }] };
+  rerender(added);
+  await waitFor(() => expect(update).toHaveBeenCalled());
+  expect(rpc).toHaveBeenCalledWith("get_live_exercise_history_stats", {
+    p_exercise_ids: ["row"], p_preferred_workout_id: null, p_expected_user_id: "alice",
+  });
+  expect(update.mock.calls[0][0](added).exercises[0]).toMatchObject({
+    lastSession: history, bestSet6m: best, bestE1rm6m: 132, historyStatsResolved: true,
+  });
 });
