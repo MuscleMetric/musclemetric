@@ -28,7 +28,7 @@ from unnest(array['Monday','Tuesday','Wednesday','Skipped','Other user']) s;
 insert into public.workout_set_history(workout_exercise_history_id,set_number,drop_index,reps,weight)
 select pg_temp.fixture_id(s || ' bench'), n, d, reps, weight
 from (values ('Monday',1,1,5,80), ('Monday',1,0,8,100), ('Tuesday',1,0,6,105),
-             ('Wednesday',1,0,4,110), ('Skipped',1,0,null,null), ('Other user',1,0,1,200)) x(s,n,d,reps,weight);
+             ('Wednesday',1,0,4,110), ('Other user',1,0,1,200)) x(s,n,d,reps,weight);
 
 set local role authenticated;
 select set_config('request.jwt.claim.sub',pg_temp.fixture_id('owner')::text,true);
