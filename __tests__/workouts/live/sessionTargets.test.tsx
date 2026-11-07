@@ -18,6 +18,11 @@ test.each([
   [100, 7, "1 rep short"],
   [97.5, 8, "2.5 kg short"],
   [100, 8, "Target hit"],
+  [105, 8, "Target beaten · 5 kg above 💪"],
+  [100, 10, "Target beaten · 2 extra reps 💪"],
+  [105, 10, "Target beaten · 5 kg above and 2 extra reps 💪"],
+  [102.5, 9, "Target beaten · 2.5 kg above and 1 extra rep 💪"],
+  [95, 10, "Similar estimated strength · 5 kg short"],
   [105, 7, "Similar estimated strength · 1 rep short"],
   [95, 6, "5 kg and 2 reps short"],
 ] as const)("compares the actual set %s × %s", (weight, reps, expected) => {
@@ -43,7 +48,7 @@ test("one qualifying set wins even when a different set has a higher e1RM", () =
       ],
       true,
     ),
-  ).not.toBe("Target hit");
+  ).toBe("Similar estimated strength · 1 rep short");
 });
 test("single-metric targets compare only the prescribed metric", () => {
   expect(
@@ -57,6 +62,44 @@ test("single-metric targets compare only the prescribed metric", () => {
     targetFeedback(
       { ...target, reps: null },
       [{ weight: 102.5, reps: null }],
+      true,
+    ),
+  ).toBe("Target beaten · 2.5 kg above 💪");
+});
+
+test("the strongest qualifying set wins regardless of order", () => {
+  const sets = [
+    { weight: 100, reps: 8 },
+    { weight: 105, reps: 8 },
+    { weight: 105, reps: 10 },
+    { weight: 150, reps: 7 },
+  ];
+  for (const ordered of [sets, [...sets].reverse()]) {
+    expect(targetFeedback(target, ordered, true)).toBe(
+      "Target beaten · 5 kg above and 2 extra reps 💪",
+    );
+  }
+});
+
+test("single-metric celebrations ignore the unprescribed metric", () => {
+  expect(
+    targetFeedback(
+      { ...target, weight: null },
+      [{ weight: 200, reps: 9 }],
+      false,
+    ),
+  ).toBe("Target beaten · 1 extra rep 💪");
+  expect(
+    targetFeedback(
+      { ...target, weight: null },
+      [{ weight: 200, reps: 8 }],
+      false,
+    ),
+  ).toBe("Target hit");
+  expect(
+    targetFeedback(
+      { ...target, reps: null },
+      [{ weight: 100, reps: 20 }],
       true,
     ),
   ).toBe("Target hit");
@@ -170,6 +213,20 @@ test("the live card updates after an edit and restores the historical card witho
     />,
   );
   expect(card.getByText("Target hit")).toBeTruthy();
+  card.rerender(
+    <StrengthStatsCards
+      {...props}
+      targets={[target]}
+      sets={[
+        { weight: 100, reps: 8 },
+        { weight: 105, reps: 10 },
+      ]}
+    />,
+  );
+  expect(
+    card.getByText("Target beaten · 5 kg above and 2 extra reps 💪"),
+  ).toBeTruthy();
+  expect(card.getByText("100 kg × 8 reps")).toBeTruthy();
   card.rerender(
     <StrengthStatsCards
       {...props}
