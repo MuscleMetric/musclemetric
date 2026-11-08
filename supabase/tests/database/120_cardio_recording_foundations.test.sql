@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(35);
 
 insert into auth.users(id,email) values
  ('f0000000-0000-4000-8000-000000000001','cardio-foundations-a@test.local'),
@@ -148,6 +148,43 @@ select is((select count(*) from public.cardio_route_points
 select is((select count(*) from public.cardio_splits
  where recording_id='f2000000-0000-4000-8000-000000000001'),0::bigint,
  'deleting a recording deletes split data');
+
+
+-- Deleting the saved workout must also erase the linked GPS track and splits.
+select lives_ok($
+ insert into public.cardio_recordings
+ (id,user_id,workout_history_id,status,run_type,started_at,completed_at)
+ values ('f2000000-0000-4000-8000-000000000005',
+         'f0000000-0000-4000-8000-000000000001',
+         'f3000000-0000-4000-8000-000000000001',
+         'completed','easy',now() - interval '1 minute',now())
+ $, 'owner can link another completed run to its own workout');
+
+select lives_ok($
+ insert into public.cardio_route_points
+ (recording_id,point_index,recorded_at,elapsed_seconds,latitude,longitude)
+ values ('f2000000-0000-4000-8000-000000000005',0,now(),0,51.5,-0.12)
+ $, 'linked run can contain exact GPS points');
+select lives_ok($
+ insert into public.cardio_splits
+ (recording_id,split_index,distance_meters,duration_seconds,end_elapsed_seconds)
+ values ('f2000000-0000-4000-8000-000000000005',1,1000,300,300)
+ $, 'linked run can contain splits');
+
+set local role postgres;
+select lives_ok($
+ delete from public.workout_history where id='f3000000-0000-4000-8000-000000000001'
+ $, 'deleting the associated workout cascades to the recording');
+
+select is((select count(*) from public.cardio_recordings
+ where id='f2000000-0000-4000-8000-000000000005'),0::bigint,
+ 'deleting workout history removes its GPS recording');
+select is((select count(*) from public.cardio_route_points
+ where recording_id='f2000000-0000-4000-8000-000000000005'),0::bigint,
+ 'deleting workout history removes its precise coordinates');
+select is((select count(*) from public.cardio_splits
+ where recording_id='f2000000-0000-4000-8000-000000000005'),0::bigint,
+ 'deleting workout history removes its splits');
 
 set local role anon;
 select throws_ok($$select count(*) from public.cardio_route_points$$,
