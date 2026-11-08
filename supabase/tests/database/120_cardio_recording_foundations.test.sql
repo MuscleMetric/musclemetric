@@ -135,7 +135,7 @@ select throws_ok($$
  update public.cardio_recordings
  set user_id='f0000000-0000-4000-8000-000000000002'
  where id='f2000000-0000-4000-8000-000000000001'
- $,'23514',null,'linked recording ownership cannot be reassigned (workout owner guard)');
+ $ $,'23514',null,'linked recording ownership cannot be reassigned (workout owner guard)');
 
 select lives_ok($$
  delete from public.cardio_recordings
