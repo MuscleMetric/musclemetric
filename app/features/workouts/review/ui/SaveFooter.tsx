@@ -32,6 +32,7 @@ export function SaveFooter(props: {
     >
       <Pressable
         disabled={disabled}
+        testID="workout-save"
         onPress={props.onPressSave}
         style={{
           height: 56,

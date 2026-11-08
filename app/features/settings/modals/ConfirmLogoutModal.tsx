@@ -173,6 +173,7 @@ export function ConfirmLogoutModal({
             <View style={styles.footer}>
               <Pressable
                 style={[styles.primaryBtn, { opacity: loading ? 0.7 : 1 }]}
+                testID="logout-confirm"
                 onPress={logout}
                 disabled={loading}
               >

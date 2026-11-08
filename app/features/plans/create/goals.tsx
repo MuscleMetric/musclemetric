@@ -443,6 +443,7 @@ function NumberBox({
       <Text style={s.fieldLabel}>{label}</Text>
       <TextInput
         style={s.valueInput}
+        testID={`plan-goal-${label.toLowerCase().replace(/ /g, "-")}`}
         placeholder={placeholder}
         placeholderTextColor={colors.textMuted}
         keyboardType="numeric"

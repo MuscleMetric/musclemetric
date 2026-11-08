@@ -1,0 +1,24 @@
+appId: com.musclemetric.app.e2e
+---
+- launchApp:
+    clearState: true
+    permissions:
+      all: deny
+- extendedWaitUntil:
+    visible:
+      id: e2e-email
+    timeout: 30000
+- tapOn:
+    id: e2e-email
+- inputText: ${EMAIL}
+- tapOn:
+    id: e2e-password
+- inputText: ${PASSWORD}
+- hideKeyboard
+- tapOn:
+    id: e2e-sign-in
+- extendedWaitUntil:
+    notVisible:
+      id: e2e-email
+    timeout: 30000
+- assertVisible: Home

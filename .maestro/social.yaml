@@ -1,0 +1,9 @@
+appId: com.musclemetric.app.e2e
+name: Social - owner can view a private workout post
+---
+- runFlow: helpers/login.yaml
+- openLink: musclemetric://features/social/profile/${OWNER_ID}
+- extendedWaitUntil:
+    visible: ${PRIVATE_CAPTION}
+    timeout: 30000
+- runFlow: helpers/logout.yaml
