@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEST = ROOT / "assets" / "vital-preview"
 MAX_VIDEO_BYTES = 80 * 1024 * 1024
 MAX_TOTAL_BYTES = 250 * 1024 * 1024
-MAX_VIDEOS = 20
+MAX_VIDEOS = 8
+PREVIEW_IDS = {"0051", "0054", "0057", "0060", "0073", "0074", "0087", "0098"}
 
 def key(value: object) -> str:
     return re.sub(r"[^a-z0-9]+", "", str(value).lower())
@@ -69,7 +70,11 @@ def resolve_video(item: dict, videos: list[zipfile.ZipInfo], overrides: dict) ->
             candidates.append(video)
         elif ident and (stem == ident or stem.startswith(ident) or stem.endswith(ident) or parent == ident):
             candidates.append(video)
-    # Never assign a clip where multiple filenames match; require manual inspection.
+    # The actual uploaded ZIP contains duplicate 0051 and 0098 videos in
+    # Character Samples. Prefer the exercise referenced by Free50 JSON.
+    if len(candidates) > 1:
+        free50 = [clip for clip in candidates if "/Free50/Free50/" in clip.filename]
+        return free50[0] if len(free50) == 1 else None
     return candidates[0] if len(candidates) == 1 else None
 
 def inspect_pack(zf: zipfile.ZipFile) -> tuple[list[dict], list[zipfile.ZipInfo]]:
@@ -118,6 +123,8 @@ def run(archive: Path, inspect_only: bool, mapping: Path | None) -> int:
         bytes_written = 0
         used_names: set[str] = set()
         for item in rows:
+            if str(item.get("exerciseId") or item.get("id") or "") not in PREVIEW_IDS:
+                continue
             if len(exported) >= MAX_VIDEOS:
                 break
             video = resolve_video(item, videos, overrides)
@@ -147,6 +154,11 @@ def run(archive: Path, inspect_only: bool, mapping: Path | None) -> int:
                 "description": strings(item.get("description")),
                 "instructions": strings(item.get("instructions")),
             }
+            if exercise_id == "0057":
+                metadata["qualityNote"] = (
+                    "Potential incorrect animation: appears to show bench press, "
+                    "but metadata says barbell hip thrust. Not production-approved."
+                )
             exported.append("  { ..."+json.dumps(metadata, ensure_ascii=False)+", source: require('./"+asset_name+"') },")
             print("Imported:", metadata["name"], "<-", video.filename)
 
