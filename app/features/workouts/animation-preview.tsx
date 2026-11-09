@@ -111,7 +111,7 @@ export default function AnimationPreview() {
                 <View style={{ ...card, padding: 0, overflow: "hidden" }}>
                   {current ? (
                     <>
-                      <View style={{ backgroundColor: colors.bg, height: 240 }}>
+                      <View style={{ backgroundColor: "#FFFFFF", height: 240 }}>
                         <Clip key={current.clip.exerciseId} source={current.clip.source} />
                       </View>
                       <View style={{ padding: layout.space.lg, gap: 8 }}>
