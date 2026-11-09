@@ -28,8 +28,10 @@ Status: UI/code implemented; actual sample ZIP still needs to be available to th
 5. Run tests:
    npm run typecheck
    npx jest __tests__/vitalPreview/matching.test.ts --runInBand
-6. Connect the iPhone by USB-C and start your usual Expo iOS development-client workflow.
-   npx expo start --dev-client
+   python3 -m unittest discover -s scripts -p 'test_vital_free_pack.py'
+6. Connect the iPhone by USB-C and rebuild the development app: expo-video is a native module.
+   npx expo run:ios --device
+   (For later JavaScript-only iterations, npx expo start --dev-client is sufficient.)
 7. In the Workout tab, tap "EXPERIMENTAL · Exercise animation preview".
 
 ## Test checklist
