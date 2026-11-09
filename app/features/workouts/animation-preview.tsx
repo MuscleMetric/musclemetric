@@ -7,7 +7,6 @@ import { ArrowLeft, CheckCircle2, CirclePlay, Database, FlaskConical, Info, Sear
 import { useAppTheme } from "@/lib/useAppTheme";
 import { supabase } from "@/lib/supabase";
 import { PREVIEW_ANIMATIONS } from "@/assets/vital-preview/manifest";
-import type { VitalPreviewAnimation } from "@/features/vitalPreview/types";
 import { matchExercise } from "@/features/vitalPreview/matching";
 
 type ExistingExercise = { id: string; name: string; equipment: string | null; type: string | null };
@@ -85,7 +84,7 @@ export default function AnimationPreview() {
         <View style={{ ...card, borderColor: colors.primary, gap: 9 }}>
           <Text style={{ ...muted, color: colors.primary, fontFamily: typography.fontFamily.semibold }}>PROTOTYPE · NO WORKOUT DATA CHANGED</Text>
           <Text style={heading}>See the movement, not just the name.</Text>
-          <Text style={body}>Explore a looping exercise demonstration alongside MuscleMetric's existing exercise metadata. Nothing on this screen can save a workout or change an exercise.</Text>
+          <Text style={body}>Explore a looping exercise demonstration alongside MuscleMetric&apos;s existing exercise metadata. Nothing on this screen can save a workout or change an exercise.</Text>
           <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
             <View style={tag}><Text style={muted}>{PREVIEW_ANIMATIONS.length} sample clips</Text></View>
             <View style={tag}><Text style={muted}>{matchedCount} confirmed matches</Text></View>
