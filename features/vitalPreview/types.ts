@@ -10,4 +10,5 @@ export type VitalPreviewAnimation = {
   description: string[];
   instructions: string[];
   source: number;
+  qualityNote?: string;
 };
