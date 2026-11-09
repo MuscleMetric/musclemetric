@@ -2,7 +2,7 @@
 
 Branch: feature/vital-animations-preview
 Route: /features/workouts/animation-preview (visible on the Workout tab)
-Status: UI/code implemented; actual sample ZIP still needs to be available to the importer.
+Status: UI and importer implemented; the user-supplied 272 MB ZIP was inspected and the importer adjusted for its real structure. Native iOS playback remains to be tested on device.
 
 ## Safety contract
 - Existing production exercise IDs, exercise-musclegroup assignments, workouts, history, RPCs and policies are unchanged.
@@ -23,8 +23,7 @@ Status: UI/code implemented; actual sample ZIP still needs to be available to th
    python3 scripts/import_vital_free_pack.py ~/Downloads/YOUR_FREE_PACK.zip --inspect
 4. Import known MP4s and generate the local-only manifest:
    python3 scripts/import_vital_free_pack.py ~/Downloads/YOUR_FREE_PACK.zip
-   If no clips are matched automatically, supply a JSON file mapping exercise IDs to MP4 file names:
-   python3 scripts/import_vital_free_pack.py ~/Downloads/YOUR_FREE_PACK.zip --mapping ./vital-map.json
+   The importer selects eight sample exercises (0051, 0054, 0057, 0060, 0073, 0074, 0087, 0098), approximately 35 MiB.
 5. Run tests:
    npm run typecheck
    npx jest __tests__/vitalPreview/matching.test.ts --runInBand
@@ -45,9 +44,9 @@ Status: UI/code implemented; actual sample ZIP still needs to be available to th
 - In the "App placement" tab, review exercise picker, overview and live-workout proposals.
 
 ## Known blockers / review notes
-- Media ZIP must actually be present to test animations. The free-pack URL advertises downloadable media, but a ZIP has not been accessible from the current session.
-- The parser accepts an array or {exercises:[...]} / {data:[...]} / {items:[...]} / {results:[...]} / id-keyed JSON objects. If the free pack uses another shape, inspect it and adapt the parser.
-- Import limits: 20 clips, 80 MB per file, 250 MB total to keep device tests bounded.
+- The ZIP is now available and inspected. It contains 50 Free50 MP4s + 50 JSON records, plus 11 extra character sample videos. The importer explicitly prefers the Free50 paths for duplicate IDs 0051 and 0098.
+- The real metadata contains id (not exerciseId), and description is a string. These are supported by the importer.
+- Import defaults to eight deliberately chosen clips (about 35 MiB) with 80 MB per-file and 250 MB total upper limits. The 0057 animation appears to show bench press despite being labelled hip thrust; it is explicitly flagged.
 - MP4 media must not be added to the public repo. The local-generated manifest requires locally available files; the branch's tracked manifest remains empty.
 - The frontend reads the production catalogue only. This does not yet implement a persistent exercise-animation mapping or production UI rollout.
 - Verify native expo-video installation in the iOS development build (this branch uses Expo SDK 54 compatible 3.x).
