@@ -124,6 +124,7 @@ export default function AnimationPreview() {
                         {current.clip.instructions.slice(0, 5).map((step, index) => (
                           <Text key={index} style={body}>{index + 1}. {step}</Text>
                         ))}
+                        {current.clip.qualityNote ? <View style={{ borderColor: colors.warning, borderWidth: 1, borderRadius: layout.radius.md, padding: 12 }}><Text style={{ color: colors.warning, fontFamily: typography.fontFamily.semibold }}>Needs manual review</Text><Text style={body}>{current.clip.qualityNote}</Text></View> : null}
                         <Text style={muted}>Target: {current.clip.target}. Supporting: {current.clip.secondaryMuscles.join(", ") || "Not specified"}.</Text>
                       </View>
                     </>
