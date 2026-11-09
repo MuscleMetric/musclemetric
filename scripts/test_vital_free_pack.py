@@ -41,6 +41,21 @@ class VitalPreviewImporterTests(unittest.TestCase):
                 self.assertEqual(importer.run(archive, False, None), 3)
             self.assertFalse((destination / "manifest.ts").exists())
 
+    def test_prefers_free50_clip_when_character_sample_reuses_id(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "assets"
+            archive = Path(tmp) / "sample.zip"
+            with zipfile.ZipFile(archive, "w") as z:
+                z.writestr("VitalAnimations/Free50/50gymworkouts.json", json.dumps([
+                    {"id": "0051", "name": "pec deck machine fly",
+                     "bodyPart": "chest", "instructions": ["Sit down"]}
+                ]))
+                z.writestr("VitalAnimations/Character Samples/gymExercise/0051.mp4", b"wrong sample")
+                z.writestr("VitalAnimations/Free50/Free50/0051.mp4", b"correct Free50 clip")
+            with patch.object(importer, "DEST", destination):
+                self.assertEqual(importer.run(archive, False, None), 0)
+            self.assertEqual((destination / "0051.mp4").read_bytes(), b"correct Free50 clip")
+
     def test_inspection_only_writes_nothing(self):
         with tempfile.TemporaryDirectory() as tmp:
             destination = Path(tmp) / "assets"
