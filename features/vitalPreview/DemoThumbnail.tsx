@@ -15,7 +15,9 @@ function thumbnail(source: number) {
         player.muted = true;
         player.audioMixingMode = "mixWithOthers";
         await player.replaceAsync(source);
-        const [frame] = await player.generateThumbnailsAsync(0.5, {
+        // SDK 54's iOS bridge expects an array despite the number | number[]
+        // TypeScript signature. A scalar aborts in DynamicArrayType.cast.
+        const [frame] = await player.generateThumbnailsAsync([0.5], {
           maxWidth: 160,
           maxHeight: 160,
         });
