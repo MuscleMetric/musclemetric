@@ -1,3 +1,5 @@
+import { ExerciseDemo } from "@/features/vitalPreview/ExerciseDemo";
+import { findExerciseDemo } from "@/features/vitalPreview/catalog";
 // ui/modals/ExercisePickerSheet.tsx
 import React, { useMemo, useState } from "react";
 import {
@@ -132,6 +134,8 @@ function CardRow(props: {
   const { colors, typography } = useAppTheme();
 
   return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+    {findExerciseDemo(props.item.id) ? <ExerciseDemo exerciseId={props.item.id} name={props.item.name ?? "Exercise"} compact /> : null}
     <Pressable
       onPress={() => {
         if (props.disabled) return;
@@ -140,6 +144,7 @@ function CardRow(props: {
       }}
       disabled={props.disabled}
       style={{
+        flex: 1,
         borderWidth: 1,
         borderColor: props.selected ? colors.primary : colors.border,
         backgroundColor: colors.surface ?? colors.bg,
@@ -151,7 +156,7 @@ function CardRow(props: {
       <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
         <View style={{ flex: 1, paddingRight: 10 }}>
           <Text
-            numberOfLines={1}
+            numberOfLines={2}
             style={{
               color: colors.text,
               fontFamily: typography.fontFamily.bold,
@@ -256,6 +261,7 @@ function CardRow(props: {
         </View>
       </View>
     </Pressable>
+    </View>
   );
 }
 
@@ -311,6 +317,7 @@ export function ExercisePickerSheet(props: {
   const { colors, typography } = useAppTheme();
   const insets = useSafeAreaInsets();
 
+  const [demosOnly, setDemosOnly] = useState(false);
   const [muscleMenuOpen, setMuscleMenuOpen] = useState(false);
   const [equipmentMenuOpen, setEquipmentMenuOpen] = useState(false);
 
@@ -358,6 +365,7 @@ export function ExercisePickerSheet(props: {
     const favoritesOnly = Boolean(props.favoritesOnly);
 
     const out = (combinedOptions ?? []).filter((ex) => {
+      if (demosOnly && !findExerciseDemo(ex.id)) return false;
       if (favoritesOnly && !favIds.has(ex.id)) return false;
 
       if (props.selectedEquipment) {
@@ -398,6 +406,7 @@ export function ExercisePickerSheet(props: {
 
     return out;
   }, [
+    demosOnly,
     combinedOptions,
     props.search,
     props.favoritesOnly,
@@ -736,6 +745,7 @@ export function ExercisePickerSheet(props: {
         </View>
 
         <View style={{ marginTop: 12, flexDirection: "row", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+          {combinedOptions.some(ex => findExerciseDemo(ex.id)) ? <Pill label="With demos" active={demosOnly} onPress={() => { Keyboard.dismiss(); setDemosOnly(value => !value); }} /> : null}
           <Pill
             label=""
             leftIcon={props.favoritesOnly ? "★" : "☆"}

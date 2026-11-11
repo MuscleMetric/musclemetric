@@ -1,3 +1,4 @@
+import { ExerciseDemo } from "@/features/vitalPreview/ExerciseDemo";
 import React from "react";
 import { View, Text, Pressable } from "react-native";
 import {
@@ -752,6 +753,7 @@ function WorkoutOverviewContent({
         >
           {!activeExercise ? null : (
             <View style={{ gap: layout.space.md }}>
+              <ExerciseDemo exerciseId={activeExercise.exerciseId} name={activeExercise.name} enabled={exerciseModalOpen} />
               <Card>
                 <View style={{ gap: layout.space.sm }}>
                   <Text

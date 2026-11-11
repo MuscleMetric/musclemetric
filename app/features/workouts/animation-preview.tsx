@@ -49,7 +49,7 @@ export default function AnimationPreview() {
     return () => { cancelled = true; };
   }, []);
 
-  const rows = useMemo(() => PREVIEW_ANIMATIONS.map((clip) => ({
+  const rows = useMemo(() => PREVIEW_ANIMATIONS.filter(clip => clip.exerciseId !== "0057").map((clip) => ({
     clip,
     match: matchExercise(clip, exercises),
   })), [exercises]);
@@ -93,7 +93,7 @@ export default function AnimationPreview() {
         </View>
 
         <View style={{ flexDirection: "row", gap: 8 }}>
-          {([["gallery", "Animation gallery"], ["integration", "App placement"]] as const).map(([key, title]) => (
+          {([["gallery", "Animation gallery"], ["integration", "Try in a workout"]] as const).map(([key, title]) => (
             <Pressable key={key} onPress={() => setActiveTab(key)} accessibilityRole="tab" accessibilityState={{ selected: activeTab === key }} style={{
               paddingVertical: 11, paddingHorizontal: 14, borderRadius: layout.radius.md,
               backgroundColor: activeTab === key ? colors.primary : colors.surface,
@@ -170,22 +170,22 @@ export default function AnimationPreview() {
           <>
             <View style={{ ...card, gap: 11 }}>
               <Text style={{ ...heading, fontSize: 20 }}>1 · Exercise picker</Text>
-              <Text style={body}>Add a small play icon on exercise results. Tapping it opens the demonstration without interrupting plan creation.</Text>
-              <Text style={{ ...muted, color: colors.primary }}>Future integration · not enabled</Text>
+              <Text style={body}>Start or resume a workout, tap Add exercises, then With demos. Tap a thumbnail to watch; tap the exercise card to select it. Your selection stays in place when you close the demo.</Text>
+              <Text style={{ ...muted, color: colors.primary }}>Available on this test branch</Text>
             </View>
             <View style={{ ...card, gap: 11 }}>
               <Text style={{ ...heading, fontSize: 20 }}>2 · Workout overview</Text>
-              <Text style={body}>An animated movement card appears inside an exercise detail sheet with target muscles, form cues and a clear start-workout action.</Text>
-              <Text style={{ ...muted, color: colors.primary }}>Future integration · not enabled</Text>
+              <Text style={body}>Open a saved workout before pressing Start workout. Tap a supported exercise, then Watch demo in its details sheet. This is the workout overview.</Text>
+              <Text style={{ ...muted, color: colors.primary }}>Available on this test branch</Text>
             </View>
             <View style={{ ...card, gap: 11 }}>
               <Text style={{ ...heading, fontSize: 20 }}>3 · Live workout</Text>
-              <Text style={body}>Show a compact, optional Technique button. It opens the looped demonstration without replacing set inputs or session targets.</Text>
-              <Text style={{ ...muted, color: colors.primary }}>Future integration · not enabled</Text>
+              <Text style={body}>Open Back Squat, Romanian Deadlift or another supported sample in a live workout. Watch demo is available in the exercise list and the set-entry sheet. Close it to continue logging exactly where you left off.</Text>
+              <Text style={{ ...muted, color: colors.primary }}>Available on this test branch</Text>
             </View>
             <View style={{ ...card, gap: 8 }}>
-              <Text style={{ color: colors.text, fontFamily: typography.fontFamily.semibold }}>Why the isolation matters</Text>
-              <Text style={muted}>All previews are local assets. The screen only SELECTs public exercise names for matching, and never changes the existing exercises, muscle contributions or workout history.</Text>
+              <Text style={{ color: colors.text, fontFamily: typography.fontFamily.semibold }}>Small sample, real workout flow</Text>
+              <Text style={muted}>Nine sample movements are enabled for specific catalogue exercises. Hip thrust is excluded because its video is mislabeled. Watching a demo changes no workout data; logging and completing a workout use the normal save flow.</Text>
             </View>
           </>
         )}

@@ -1,3 +1,4 @@
+import { ExerciseDemo } from "@/features/vitalPreview/ExerciseDemo";
 // app/features/workouts/live/modals/ExerciseEntryModal.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -477,6 +478,10 @@ export function ExerciseEntryModal(props: {
                 }}
                 onSwapExercise={props.onSwapExercise}
               />
+
+              <View style={{ paddingHorizontal: 18, marginBottom: 12 }}>
+                <ExerciseDemo exerciseId={exercise.exerciseId} name={exercise.name} enabled={props.visible} />
+              </View>
 
               {supersetGroup ? (
                 <SupersetSwitcher
