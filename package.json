@@ -72,7 +72,8 @@
     "uuid": "^13.0.0",
     "victory": "^36.9.2",
     "victory-native": "^36.9.2",
-    "zustand": "^5.0.8"
+    "zustand": "^5.0.8",
+    "expo-video": "~3.0.11"
   },
   "devDependencies": {
     "@testing-library/jest-native": "^5.4.3",

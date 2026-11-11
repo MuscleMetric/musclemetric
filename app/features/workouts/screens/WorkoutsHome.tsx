@@ -7,6 +7,8 @@ import {
   NativeSyntheticEvent,
   NativeScrollEvent,
   View,
+  Pressable,
+  Text,
 } from "react-native";
 import { router } from "expo-router";
 
@@ -71,6 +73,15 @@ export default function WorkoutsHome() {
         }}
         showsVerticalScrollIndicator={false}
       >
+        <Pressable
+          onPress={() => router.push("/features/workouts/animation-preview")}
+          style={{ padding: 15, borderRadius: layout.radius.lg, backgroundColor: colors.surface, borderColor: colors.primary, borderWidth: 1 }}
+          accessibilityRole="button"
+          accessibilityLabel="Open exercise animation preview"
+        >
+          <Text style={{ color: colors.primary, fontWeight: "700", fontSize: 14 }}>EXPERIMENTAL · Exercise animation preview</Text>
+          <Text style={{ color: colors.textMuted, marginTop: 4, fontSize: 13 }}>Explore movement demos without changing any workouts</Text>
+        </Pressable>
         <StateRenderer
           payload={data}
           userId={userId}

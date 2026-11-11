@@ -10,3 +10,8 @@ yarn-error.log
 ci-artifacts/
 allure-results/
 allure-report/
+
+# Licensed Vital Animations free-pack media: do not publish raw exercise clips
+assets/vital-preview/*.mp4
+assets/vital-preview/*.mov
+assets/vital-preview/*.zip

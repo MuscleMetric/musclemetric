@@ -1,3 +1,5 @@
+import { findExerciseDemo } from "@/features/vitalPreview/catalog";
+import { ExerciseDemo } from "@/features/vitalPreview/ExerciseDemo";
 // app/features/workouts/live/ui/LiveWorkoutExerciseRow.tsx
 import React, { useMemo } from "react";
 import { View, Text, Pressable } from "react-native";
@@ -174,8 +176,7 @@ export function LiveWorkoutExerciseRow(props: {
   }, [complete, props.ex, loggingType]);
 
   return (
-    <Pressable
-      onPress={props.onPress}
+    <View
       style={{
         backgroundColor: colors.bg ?? colors.surface,
         borderRadius: 22,
@@ -189,99 +190,119 @@ export function LiveWorkoutExerciseRow(props: {
         shadowOffset: { width: 0, height: 4 },
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "flex-start" }}>
-        <View
-          style={{
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            borderWidth: 1,
-            borderColor: colors.border,
-            alignItems: "center",
-            justifyContent: "center",
-            marginRight: 12,
-            marginTop: 2,
-          }}
-        >
-          <Text
-            style={{
-              fontFamily: typography.fontFamily.bold,
-              color: colors.text,
-            }}
-          >
-            {props.index}
-          </Text>
-        </View>
-
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text
-            style={{
-              fontFamily: typography.fontFamily.bold,
-              fontSize: typography.size.body,
-              color: colors.text,
-            }}
-            numberOfLines={2}
-          >
-            {props.title}
-          </Text>
-
+      <View style={{ flexDirection: "row", alignItems: "flex-start", gap: 10 }}>
+        {findExerciseDemo(props.ex.exerciseId) ? (
+          <ExerciseDemo
+            exerciseId={props.ex.exerciseId}
+            name={props.title}
+            compact
+          />
+        ) : (
           <View
             style={{
-              flexDirection: "row",
+              width: 34,
+              height: 34,
+              borderRadius: 17,
+              borderWidth: 1,
+              borderColor: colors.border,
               alignItems: "center",
-              flexWrap: "wrap",
-              marginTop: 6,
+              justifyContent: "center",
+              marginRight: 12,
+              marginTop: 2,
             }}
           >
             <Text
               style={{
-                fontFamily: typography.fontFamily.regular,
-                fontSize: typography.size.sub,
-                color: colors.textMuted,
+                fontFamily: typography.fontFamily.bold,
+                color: colors.text,
               }}
             >
-              {props.subtitle}
+              {props.index}
+            </Text>
+          </View>
+        )}
+
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${pillTextValue}: ${props.title}`}
+          onPress={props.onPress}
+          style={{ flex: 1, flexDirection: "row", alignItems: "flex-start" }}
+        >
+          <View style={{ flex: 1, paddingRight: 8 }}>
+            <Text
+              style={{
+                fontFamily: typography.fontFamily.bold,
+                fontSize: typography.size.body,
+                color: colors.text,
+              }}
+              numberOfLines={2}
+            >
+              {props.title}
             </Text>
 
-            {!!props.tags?.length && (
-              <>
-                <Text style={{ color: colors.textMuted, marginHorizontal: 6 }}>
-                  •
-                </Text>
-                <Text
-                  style={{
-                    fontFamily: typography.fontFamily.semibold,
-                    fontSize: typography.size.sub,
-                    color: colors.primary,
-                  }}
-                >
-                  {props.tags.join(" • ")}
-                </Text>
-              </>
-            )}
-          </View>
-        </View>
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                flexWrap: "wrap",
+                marginTop: 6,
+              }}
+            >
+              <Text
+                style={{
+                  fontFamily: typography.fontFamily.regular,
+                  fontSize: typography.size.sub,
+                  color: colors.textMuted,
+                }}
+              >
+                {props.subtitle}
+              </Text>
 
-        <View
-          style={{
-            borderWidth: 2,
-            borderColor: pillBorder,
-            backgroundColor: pillBg,
-            borderRadius: 999,
-            paddingVertical: 8,
-            paddingHorizontal: 14,
-            minWidth: 112,
-            alignItems: "center",
-            justifyContent: "center",
-            marginTop: 2,
-          }}
-        >
-          <Text
-            style={{ fontFamily: typography.fontFamily.bold, color: pillText }}
+              {!!props.tags?.length && (
+                <>
+                  <Text
+                    style={{ color: colors.textMuted, marginHorizontal: 6 }}
+                  >
+                    •
+                  </Text>
+                  <Text
+                    style={{
+                      fontFamily: typography.fontFamily.semibold,
+                      fontSize: typography.size.sub,
+                      color: colors.primary,
+                    }}
+                  >
+                    {props.tags.join(" • ")}
+                  </Text>
+                </>
+              )}
+            </View>
+          </View>
+
+          <View
+            style={{
+              borderWidth: 2,
+              borderColor: pillBorder,
+              backgroundColor: pillBg,
+              borderRadius: 999,
+              paddingVertical: 8,
+              paddingHorizontal: 10,
+              minWidth: 70,
+              alignItems: "center",
+              justifyContent: "center",
+              marginTop: 2,
+            }}
           >
-            {pillTextValue}
-          </Text>
-        </View>
+            <Text
+              style={{
+                fontFamily: typography.fontFamily.bold,
+                color: pillText,
+              }}
+            >
+              {pillTextValue}
+            </Text>
+          </View>
+        </Pressable>
       </View>
 
       {complete && completedBlocks.length > 0 && (
@@ -334,6 +355,6 @@ export function LiveWorkoutExerciseRow(props: {
           })}
         </View>
       )}
-    </Pressable>
+    </View>
   );
 }

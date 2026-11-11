@@ -145,6 +145,9 @@ jobs:
           set -o pipefail
           FORCE_COLOR=0 npm run test:ci -- --json --outputFile=ci-artifacts/jest-results.json 2>&1 | tee ci-artifacts/tests.log
 
+      - name: Verify Vital Animations ZIP importer isolation
+        run: python3 -m unittest discover -s scripts -p 'test_vital_free_pack.py'
+
       - name: Publish Jest summary
         if: always()
         shell: bash
