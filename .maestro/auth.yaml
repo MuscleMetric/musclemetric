@@ -1,0 +1,26 @@
+appId: com.musclemetric.app.e2e
+name: Authentication - rejected credentials, session restore and logout
+---
+- runFlow:
+    file: helpers/login.yaml
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: Home
+    timeout: 30000
+- assertNotVisible:
+    id: e2e-email
+- runFlow: helpers/logout.yaml
+- tapOn:
+    id: e2e-email
+- inputText: ${EMAIL}
+- tapOn:
+    id: e2e-password
+- inputText: incorrect-test-password
+- hideKeyboard
+- tapOn:
+    id: e2e-sign-in
+- assertVisible:
+    id: e2e-login-error
+- assertVisible:
+    id: e2e-email

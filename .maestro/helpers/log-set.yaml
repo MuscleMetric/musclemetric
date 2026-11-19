@@ -1,0 +1,20 @@
+appId: com.musclemetric.app.e2e
+---
+- openLink: musclemetric://features/workouts/screens/WorkoutOverview?workoutId=${TEMPLATE_ID}
+- extendedWaitUntil:
+    visible: Start workout
+    timeout: 30000
+- tapOn: Start workout
+- tapOn: ${STRENGTH_NAME}
+- tapOn:
+    id: set-weight
+- eraseText
+- inputText: '50'
+- tapOn:
+    id: set-reps
+- eraseText
+- inputText: '10'
+- hideKeyboard
+- tapOn:
+    id: set-confirm
+- assertVisible: '10 reps × 50kg'

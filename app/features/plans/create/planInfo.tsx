@@ -213,6 +213,7 @@ export default function PlanInfo() {
             <TextInput
               value={title}
               onChangeText={(t) => setMeta({ title: t })}
+              testID="plan-title"
               placeholder="Hypertrophy Peak Phase"
               placeholderTextColor={colors.textMuted}
               style={s.input}
@@ -233,6 +234,7 @@ export default function PlanInfo() {
               return (
                 <Pressable
                   key={n}
+                  testID={`plan-days-${n}`}
                   onPress={() => setMeta({ workoutsPerWeek: n })}
                   style={[s.dayPill, active && s.dayPillActive]}
                 >

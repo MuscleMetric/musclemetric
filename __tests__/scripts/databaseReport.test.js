@@ -24,12 +24,12 @@ it('combined report preserves failed, cancelled and skipped upstream jobs', () =
   try {
     for (const outcome of ['failure', 'cancelled', 'skipped', 'success']) {
       const result = spawnSync(process.execPath, ['scripts/e2e/combined-report.cjs'], {
-        env: { ...process.env, MM_ALLURE_RESULTS: dir, DATABASE_RESULT: outcome, PRODUCTION_RESULT: 'success', GITHUB_STEP_SUMMARY: '' },
+        env: { ...process.env, MM_ALLURE_RESULTS: dir, DATABASE_RESULT: outcome, PRODUCTION_RESULT: 'success', NATIVE_RESULT: 'success', GITHUB_STEP_SUMMARY: '' },
         encoding: 'utf8',
       });
       expect(result.status).toBe(0);
       const rows = fs.readdirSync(dir).filter(f => f.endsWith('-result.json')).map(f => JSON.parse(fs.readFileSync(path.join(dir, f))));
-      expect(rows).toHaveLength(2);
+      expect(rows).toHaveLength(3);
       const database = rows.find(r => r.testCaseId === 'job/DATABASE_RESULT');
       expect(database.status).toBe(outcome === 'success' ? 'passed' : outcome === 'skipped' ? 'skipped' : 'broken');
       expect(database.statusDetails.message).toContain(outcome);

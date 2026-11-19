@@ -1,0 +1,13 @@
+appId: com.musclemetric.app.e2e
+name: Progress - known cardio history renders correct totals
+---
+- runFlow: helpers/login.yaml
+- openLink: musclemetric://features/progress/screens/deep-analytics?exerciseId=${CARDIO_ID}
+- extendedWaitUntil:
+    visible: ${CARDIO_NAME}
+    timeout: 30000
+- assertVisible: Total distance
+- assertVisible: '5 km'
+- assertVisible: '25:00'
+- assertVisible: '5:00 /km'
+- assertNotVisible: No cardio sessions to show yet

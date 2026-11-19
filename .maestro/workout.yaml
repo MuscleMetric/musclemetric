@@ -1,0 +1,13 @@
+appId: com.musclemetric.app.e2e
+name: Workout - enter a set, save and read history
+---
+- runFlow: helpers/login.yaml
+- runFlow: helpers/log-set.yaml
+- runFlow: helpers/save.yaml
+- openLink: musclemetric://features/history/screens/WorkoutHistoryListScreen
+- extendedWaitUntil:
+    visible: ${TEMPLATE_TITLE}
+    timeout: 30000
+- tapOn: ${TEMPLATE_TITLE}
+- assertVisible: '500 kg'
+- assertVisible: ${STRENGTH_NAME}

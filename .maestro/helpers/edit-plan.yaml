@@ -1,0 +1,20 @@
+appId: com.musclemetric.app.e2e
+---
+- openLink: musclemetric://features/plans/edit?planId=${PLAN_ID}
+- extendedWaitUntil:
+    visible: Plan Info
+    timeout: 30000
+- tapOn: Plan Info
+- tapOn:
+    id: plan-edit-title
+- eraseText
+- inputText: ${EDITED_TITLE}
+- hideKeyboard
+- tapOn: Save changes
+- tapOn: Save changes
+- assertVisible: Saved
+- tapOn: OK
+- openLink: musclemetric://features/plans/edit?planId=${PLAN_ID}
+- extendedWaitUntil:
+    visible: ${EDITED_TITLE}
+    timeout: 30000

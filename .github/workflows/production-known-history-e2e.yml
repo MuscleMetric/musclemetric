@@ -27,6 +27,13 @@ env:
   MM_ALLURE_RESULTS: ci-artifacts/allure-results
 
 jobs:
+  native_frontend:
+    needs: [production_reference, database_regressions]
+    if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
+    uses: ./.github/workflows/native-frontend.yml
+    secrets:
+      E2E_TESTER_EMAIL: ${{ secrets.E2E_TESTER_EMAIL }}
+      E2E_TESTER_PASSWORD: ${{ secrets.E2E_TESTER_PASSWORD }}
   database_regressions:
     if: ${{ (github.event_name == 'workflow_dispatch' || vars.ENABLE_PRODUCTION_FULL_E2E == 'true') && inputs.recovery_run_id == '' }}
     uses: ./.github/workflows/backend-regressions.yml
@@ -127,7 +134,7 @@ jobs:
   report:
     name: Combined database and production Allure report
     if: ${{ always() && (needs.production_reference.result != 'skipped' || needs.database_regressions.result != 'skipped') }}
-    needs: [database_regressions, production_reference]
+    needs: [database_regressions, production_reference, native_frontend]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -143,6 +150,7 @@ jobs:
       - name: Record job conclusions so incomplete suites cannot appear green
         env:
           MM_ALLURE_RESULTS: ci-artifacts/combined-results
+          NATIVE_RESULT: ${{ needs.native_frontend.result }}
           DATABASE_RESULT: ${{ needs.database_regressions.result }}
           PRODUCTION_RESULT: ${{ needs.production_reference.result }}
         run: node scripts/e2e/combined-report.cjs
