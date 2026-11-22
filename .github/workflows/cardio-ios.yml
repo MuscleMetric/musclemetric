@@ -1,0 +1,63 @@
+name: Cardio iOS build
+on:
+  pull_request:
+    paths:
+      - 'features/cardio/**'
+      - 'app/features/cardio/**'
+      - '.github/workflows/cardio-ios.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cardio-ios-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  simulator:
+    name: Build and launch the iPhone app
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+      CI: '1'
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: pod install --project-directory=ios
+      - name: Report resolved native dependency changes
+        run: git diff -- ios/Podfile.lock
+      - name: Build standalone app
+        run: |
+          xcodebuild -workspace ios/MuscleMetric.xcworkspace -scheme MuscleMetric -showdestinations > "$RUNNER_TEMP/destinations"
+          simulator=$(python3 - "$RUNNER_TEMP/destinations" <<'PYTHON'
+          import re, sys
+          for line in open(sys.argv[1]):
+              if "platform:iOS Simulator," in line and "name:iPhone" in line and "OS:26." in line:
+                  match = re.search(r"id:([0-9A-Fa-f-]{36})", line)
+                  if match:
+                      print(match.group(1))
+                      break
+          else:
+              sys.exit("The MuscleMetric scheme has no eligible iOS 26 iPhone simulator")
+          PYTHON
+          )
+          echo "SIMULATOR_ID=$simulator" >> "$GITHUB_ENV"
+          xcrun simctl boot "$simulator"
+          xcodebuild -workspace ios/MuscleMetric.xcworkspace -scheme MuscleMetric -configuration Release \
+            -destination "platform=iOS Simulator,id=$simulator" -derivedDataPath "$RUNNER_TEMP/cardio-build" \
+            ONLY_ACTIVE_ARCH=YES CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO -quiet
+      - name: Launch on iPhone simulator
+        run: |
+          xcrun simctl bootstatus "$SIMULATOR_ID" -b
+          xcrun simctl install "$SIMULATOR_ID" "$RUNNER_TEMP/cardio-build/Build/Products/Release-iphonesimulator/MuscleMetric.app"
+          launch=$(xcrun simctl launch "$SIMULATOR_ID" com.musclemetric.app)
+          pid=${launch##* }
+          sleep 8
+          kill -0 "$pid"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: cardio-ios-pods
+          path: ios/Podfile.lock

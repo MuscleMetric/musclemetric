@@ -1,7 +1,6 @@
 /**
  * MuscleMetric v1.1.0 GPS recording contracts.
  * Private tracking data; never spread route points into public social payloads.
- * This module is not yet wired to screens. The recorder will use it in PR 2.
  */
 export const RUN_TYPES = [
   "easy",

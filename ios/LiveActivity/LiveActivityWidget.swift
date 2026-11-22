@@ -48,14 +48,33 @@ struct LiveActivityAttributes: ActivityAttributes {
 struct LiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: LiveActivityAttributes.self) { context in
-      LiveActivityView(contentState: context.state, attributes: context.attributes)
-        .activityBackgroundTint(
-          context.attributes.backgroundColor.map { Color(hex: $0) }
-        )
-        .activitySystemActionForegroundColor(Color.black)
-        .applyWidgetURL(from: context.attributes.deepLinkUrl)
+      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" {
+        RunActivityView(state: context.state)
+          .padding()
+          .activityBackgroundTint(.black)
+          .foregroundStyle(.white)
+          .widgetURL(URL(string: "musclemetric://features/cardio/outdoor-run"))
+      } else {
+        LiveActivityView(contentState: context.state, attributes: context.attributes)
+          .activityBackgroundTint(
+            context.attributes.backgroundColor.map { Color(hex: $0) }
+          )
+          .activitySystemActionForegroundColor(Color.black)
+          .applyWidgetURL(from: context.attributes.deepLinkUrl)
+      }
     } dynamicIsland: { context in
-      DynamicIsland {
+      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" {
+        return DynamicIsland {
+          DynamicIslandExpandedRegion(.center) { RunActivityView(state: context.state) }
+        } compactLeading: {
+          Image(systemName: "figure.run")
+        } compactTrailing: {
+          Text(context.state.runDistance).monospacedDigit()
+        } minimal: {
+          Image(systemName: "figure.run")
+        }.widgetURL(URL(string: "musclemetric://features/cardio/outdoor-run"))
+      }
+      return DynamicIsland {
         DynamicIslandExpandedRegion(.leading, priority: 1) {
           dynamicIslandExpandedLeading(title: context.state.title, subtitle: context.state.subtitle)
             .dynamicIsland(verticalPlacement: .belowIfTooWide)
@@ -165,5 +184,38 @@ struct LiveActivityWidget: Widget {
       }
     )
     .progressViewStyle(.circular)
+  }
+}
+
+private extension LiveActivityAttributes.ContentState {
+  var runMetrics: [String] { (subtitle ?? "").components(separatedBy: "\n") }
+  var runDistance: String { runMetrics.first ?? "0.00 km" }
+}
+
+private struct RunActivityView: View {
+  let state: LiveActivityAttributes.ContentState
+
+  var body: some View {
+    VStack(alignment: .leading, spacing: 8) {
+      Label(state.title, systemImage: "figure.run").font(.headline)
+      HStack(alignment: .top, spacing: 12) {
+        VStack(alignment: .leading) {
+          Text("Active time").font(.caption)
+          if let origin = state.timerEndDateInMilliseconds {
+            Text(Date(timeIntervalSince1970: origin / 1000), style: .timer)
+          } else {
+            Text(state.runMetrics.last ?? "0:00")
+          }
+        }
+        VStack(alignment: .leading) {
+          Text("Distance").font(.caption)
+          Text(state.runDistance)
+        }
+        VStack(alignment: .leading) {
+          Text("Current pace").font(.caption)
+          Text(state.runMetrics.count > 1 ? state.runMetrics[1] : "—")
+        }
+      }.font(.title3).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+    }.frame(maxWidth: .infinity, alignment: .leading)
   }
 }
