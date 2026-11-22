@@ -1,4 +1,5 @@
 import "react-native-url-polyfill/auto";
+import { reconcileRecorder } from "@/features/cardio/recorder";
 import { useEffect } from "react";
 import {
   Stack,
@@ -8,7 +9,7 @@ import {
   usePathname,
 } from "expo-router";
 import { ThemeProvider } from "@react-navigation/native";
-import { useColorScheme, View, StyleSheet, Platform } from "react-native";
+import { useColorScheme, View, StyleSheet, Platform, AppState } from "react-native";
 import { LightTheme, DarkTheme } from "./theme";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -60,6 +61,16 @@ function RootNavigator() {
   const navState = useRootNavigationState();
   const navReady = !!navState?.key;
   const pathname = usePathname();
+  const owner = session?.user.id ?? null;
+  useEffect(() => {
+    if (loading || Platform.OS !== "ios") return;
+    const reconcile = () => { void reconcileRecorder(owner).catch(() => undefined); };
+    reconcile();
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") reconcile();
+    });
+    return () => subscription.remove();
+  }, [loading, owner]);
 
   useEffect(() => {
     if (!navReady) return;

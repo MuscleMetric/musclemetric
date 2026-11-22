@@ -1,7 +1,7 @@
 import React, { useMemo } from "react";
-import { ScrollView, View, RefreshControl } from "react-native";
+import { ScrollView, View, Platform, RefreshControl } from "react-native";
 import { router } from "expo-router";
-import { Screen } from "@/ui";
+import { Button, Screen } from "@/ui";
 
 import { useProgressOverview } from "../hooks/useProgressOverview";
 import { mapOverview } from "../data/progress.mapper";
@@ -55,6 +55,8 @@ export default function ProgressScreen() {
             }
           >
             <MomentumHeroSection momentum={vm.momentum} />
+            {Platform.OS === "ios" && <Button title="Running progress" variant="outline" onPress={() =>
+              router.push({ pathname: "/features/cardio/outdoor-run", params: { view: "progress" } })} />}
 
             {isNewUser ? (
               <>

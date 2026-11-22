@@ -5,14 +5,16 @@ import {
   ScrollView,
   RefreshControl,
   Pressable,
+  Platform,
   Alert,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAppTheme } from "@/lib/useAppTheme";
 import {
   Screen,
   ScreenHeader,
+  Button,
   Card,
   LoadingScreen,
   ErrorState,
@@ -229,7 +231,11 @@ function fmtSetSummary(st: {
   return "—";
 }
 
-function fmtCardioMetricLabel(metric: CardioPR["metric"]) {
+function fmtCardioMetricLabel(pr: CardioPR) {
+  const metric = pr.metric;
+  if (metric.startsWith("fastest_") && pr.calculation_method !== "exact_split" && pr.calculation_method !== "manual") {
+    return "Estimated " + metric.slice(8).replace(/_/g, " ") + " time";
+  }
   switch (metric) {
     case "longest_distance":
       return "Longest Distance";
@@ -362,7 +368,7 @@ export default function WorkoutHistoryDetailScreen({
     const cardioPbItems = cardioPrs.map((p) => ({
       exerciseName: p.exercise_name,
       kind: "cardio" as const,
-      label: fmtCardioMetricLabel(p.metric),
+      label: fmtCardioMetricLabel(p),
       value: fmtCardioPRValue(p),
     }));
 
@@ -529,6 +535,10 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         </View>
 
+        {Platform.OS === "ios" && header.notes?.includes("outdoor run") && exercises.some(e => e.exercise_name === "Outdoor Run") &&
+          <Button title="View private route and splits" variant="outline" onPress={() => router.push({
+            pathname: "/features/cardio/outdoor-run", params: { historyId: header.workout_history_id },
+          })} />}
         {header.notes ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
             <Text
@@ -647,7 +657,7 @@ export default function WorkoutHistoryDetailScreen({
                 >
                   <View style={{ flex: 1 }}>
                     <Text style={{ color: colors.text }} numberOfLines={1}>
-                      {fmtCardioMetricLabel(p.metric)}
+                      {fmtCardioMetricLabel(p)}
                     </Text>
                     <Text
                       style={{
