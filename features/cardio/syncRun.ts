@@ -1,8 +1,8 @@
 import { supabase } from "@/lib/supabase";
 import { saveRpcWorkout } from "@/lib/workoutSaveRpc";
 import { RUN_TYPE_LABELS } from "@/app/features/cardio/tracking/types";
-import { meters, splits, type Run } from "./runMetrics";
-import { readRun, serialize, writeRun } from "./runStore";
+import { meters, routeExpired, splits, type Run } from "./runMetrics";
+import { listRuns, readRun, serialize, writeRun } from "./runStore";
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const seconds = (ms: number) => Math.round(ms / 1000);
@@ -33,12 +33,33 @@ export async function saveRunHistory(owner: string, id: string) {
   await checkpoint(owner, id, { historyId: workoutHistoryId });
 }
 
-// Explicit owner-only backup. Completed status is written after the final batch.
+// Owner-only backup. Completed status is written after the final batch.
 // Unique indices let a retry safely resend batches after a dropped response.
-export async function backupRoute(owner: string, id: string) {
+const uploads = new Map<string, Promise<void>>();
+
+export function backupRoute(owner: string, id: string) {
+  const key = owner + ":" + id;
+  const existing = uploads.get(key);
+  if (existing) return existing;
+  const upload = uploadRoute(owner, id).finally(() => uploads.delete(key));
+  uploads.set(key, upload);
+  return upload;
+}
+
+export async function retryRunUploads(owner: string) {
+  let pending = false;
+  for (const run of await listRuns(owner)) {
+    if (run.autoBackup && run.end !== null && !run.routeSynced && (!routeExpired(run.start) || !run.historyId)) {
+      try { await backupRoute(owner, run.id); } catch { pending = true; }
+    }
+  }
+  return pending;
+}
+
+async function uploadRoute(owner: string, id: string) {
   await saveRunHistory(owner, id);
   const run = await readRun(owner, id);
-  if (!run.historyId || run.end === null || !run.type || run.routeSynced) return;
+  if (!run.historyId || run.end === null || !run.type || run.routeSynced || routeExpired(run.start)) return;
   const header = { id, user_id: owner, workout_history_id: run.historyId,
     source: "gps", status: "paused", started_at: iso(run.start) };
   const parent = await supabase.from("cardio_recordings").upsert(header, { onConflict: "id", ignoreDuplicates: true });

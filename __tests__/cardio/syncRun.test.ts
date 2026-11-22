@@ -16,7 +16,7 @@ beforeEach(() => {
   batches = [];
   failPoints = false;
   run = {
-    version: 1, owner: "a", id: "stable-id", start: 0, end: 11000, activeSince: null, accumulatedMs: 10000,
+    version: 1, owner: "a", id: "stable-id", start: Date.now() - 11000, end: Date.now(), activeSince: null, accumulatedMs: 10000,
     type: "easy", effort: null, leg: 1, rejected: 0, historyId: null, routeSynced: false,
     points: [0, 1].map(i => ({ time: i * 10000, latitude: 50, longitude: -0.1, accuracy: 5, leg: 1, activeMs: i * 10000, meters: i * 40 })),
   };
@@ -55,4 +55,12 @@ test("failed private backup preserves local points and retries the same batch wi
   expect(run.routeSynced).toBe(true);
   expect(batches[1]).toEqual(batches[0]);
   expect(saveRpcWorkout).toHaveBeenCalledTimes(1);
+});
+
+test("an overdue offline run still saves workout totals without uploading GPS", async () => {
+  run.start = Date.now() - 90 * 86400000;
+  await backupRoute("a", run.id);
+  expect(run.historyId).toBe("history");
+  expect(supabase.from).toHaveBeenCalledTimes(1);
+  expect(run.routeSynced).toBe(false);
 });

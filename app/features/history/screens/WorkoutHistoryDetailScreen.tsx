@@ -8,19 +8,19 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { router, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAppTheme } from "@/lib/useAppTheme";
 import {
   Screen,
   ScreenHeader,
-  Button,
   Card,
   LoadingScreen,
   ErrorState,
   Icon,
 } from "@/ui";
 
+import { RunHistoryDetail } from "@/features/cardio/RunHistoryDetail";
 import { HistorySectionHeader } from "../ui/HistorySectionHeader";
 import { PRBadge } from "../ui/PRBadge";
 import { WorkoutHistoryExerciseRow } from "../ui/WorkoutHistoryExerciseRow";
@@ -535,10 +535,9 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         </View>
 
-        {Platform.OS === "ios" && header.notes?.includes("outdoor run") && exercises.some(e => e.exercise_name === "Outdoor Run") &&
-          <Button title="View private route and splits" variant="outline" onPress={() => router.push({
-            pathname: "/features/cardio/outdoor-run", params: { historyId: header.workout_history_id },
-          })} />}
+        {Platform.OS === "ios" && exercises.some(e => e.exercise_name === "Outdoor Run") &&
+          <RunHistoryDetail historyId={header.workout_history_id} completedAt={header.completed_at}
+            recorded={!!header.notes?.includes("outdoor run")} distance={stats?.distance_total} duration={stats?.duration_seconds} />}
         {header.notes ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
             <Text

@@ -4,6 +4,9 @@ export type Fix = { latitude: number; longitude: number; accuracy: number; time:
 export type Point = Fix & { leg: number; meters: number; activeMs: number };
 export type Run = {
   version: 1;
+  autoBackup?: boolean;
+  summaryMeters?: number;
+  bestSeconds?: Record<number, number>;
   activityId?: string;
   activityUpdatedAt?: number;
   id: string;
@@ -25,8 +28,12 @@ export function activeMs(run: Run, now: number) {
   return run.accumulatedMs + (run.activeSince === null ? 0 : Math.max(0, now - run.activeSince));
 }
 
+export function routeExpired(start: number, now = Date.now()) {
+  return now - start >= 90 * 86400000;
+}
+
 export function meters(run: Run) {
-  return run.points[run.points.length - 1]?.meters ?? 0;
+  return run.points[run.points.length - 1]?.meters ?? run.summaryMeters ?? 0;
 }
 
 function separation(a: Fix, b: Fix) {
@@ -126,12 +133,16 @@ export function bestSegment(points: Point[], distance: number): number | null {
   return Number.isFinite(best) ? best / 1000 : null;
 }
 
+export function runBest(run: Run, distance: number) {
+  return run.bestSeconds?.[distance] ?? bestSegment(run.points, distance);
+}
+
 export function personalBestsForRun(run: Run, history: Run[]) {
   const earlier = history.filter(r => r.end !== null && r.start < run.start);
   return benchmarks.flatMap(distance => {
-    const time = bestSegment(run.points, distance);
+    const time = runBest(run, distance);
     if (time === null || earlier.some(r => {
-      const previous = bestSegment(r.points, distance);
+      const previous = runBest(r, distance);
       return previous !== null && previous <= time;
     })) return [];
     return [{ distance, time }];

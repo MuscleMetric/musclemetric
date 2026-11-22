@@ -1,5 +1,5 @@
 import { supabase } from "@/lib/supabase";
-import type { Point, Run } from "./runMetrics";
+import { routeExpired, type Point, type Run } from "./runMetrics";
 
 // A history link can be opened on a second phone. Only complete owner backups
 // are readable here; never infer continuity from samples lacking segment metadata.
@@ -9,9 +9,10 @@ export async function restoreHistoryRun(owner: string, historyId: string): Promi
   if (header.error) throw Error("Private route unavailable");
   if (!header.data) return null;
   const h = header.data;
+  const expired = routeExpired(Date.parse(h.started_at));
   const points: Point[] = [];
   const page = 500;
-  for (let offset = 0; ; offset += page) {
+  for (let offset = 0; !expired; offset += page) {
     const rows = await supabase.from("cardio_route_points")
       .select("recorded_at,latitude,longitude,horizontal_accuracy_m,leg_index,active_ms,cumulative_meters")
       .eq("recording_id", h.id).order("point_index").range(offset, offset + page - 1);
@@ -23,7 +24,7 @@ export async function restoreHistoryRun(owner: string, historyId: string): Promi
     }
     if (rows.data.length < page) break;
   }
-  return { version: 1, id: h.id, owner, points, start: Date.parse(h.started_at), end: Date.parse(h.completed_at),
+  return { version: 1, id: h.id, owner, points, summaryMeters: Number(h.distance_meters), start: Date.parse(h.started_at), end: Date.parse(h.completed_at),
     accumulatedMs: h.moving_seconds * 1000, activeSince: null, historyId, rejected: 0, leg: points[points.length - 1]?.leg ?? 0,
     type: h.run_type, effort: h.effort_rpe, routeSynced: true };
 }

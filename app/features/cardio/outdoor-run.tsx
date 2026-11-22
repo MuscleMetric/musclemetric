@@ -7,7 +7,7 @@ import { AuthRequiredState, Button, Screen, ScreenHeader } from "@/ui";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "./tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
 import { finishRecorder, pauseRecorder, RunActionError, startRecorder } from "@/features/cardio/recorder";
-import { activeMs, legs, meters, personalBestsForRun, splits, type Run } from "@/features/cardio/runMetrics";
+import { activeMs, routeExpired, legs, meters, personalBestsForRun, splits, type Run } from "@/features/cardio/runMetrics";
 import { discardDraft, listRuns, subscribeRuns } from "@/features/cardio/runStore";
 import { backupRoute, saveRunHistory } from "@/features/cardio/syncRun";
 import { restoreHistoryRun } from "@/features/cardio/restoreRun";
@@ -100,7 +100,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const km = run ? meters(run) / 1000 : 0;
   const last = run ? run.points[run.points.length - 1] : undefined;
   const canStart = loaded && !draft && !historyId && !progress && !run;
-  const saveHistory = (r: Run) => void action(() => saveRunHistory(owner, r.id), "Saved on this iPhone. Reconnect and retry workout history.");
+  const saveHistory = (r: Run) => void action(() => r.autoBackup ? backupRoute(owner, r.id) : saveRunHistory(owner, r.id), "Saved on this iPhone. Reconnect and retry workout history.");
   return <Screen>
     <ScreenHeader title={progress ? "Running progress" : "Outdoor Run"} />
     <ScrollView ref={scroll} contentContainerStyle={{ padding: 18, gap: 14, paddingBottom: 60 }}>
@@ -109,7 +109,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
       {(!loaded || (historyId && !run)) && !!message && <Button title="Retry" onPress={() => { setMessage(""); setRevision(n => n + 1); }} />}
       {canStart && <>
         <Text style={style}>Record distance and kilometre splits with your iPhone. Choose Always and enable Precise Location to keep measuring when the screen locks.</Text>
-        <Text style={muted}>Your route stays on this phone unless you choose a private backup.</Text>
+        <Text style={muted}>Finishing a new run saves the route and splits privately to your account for 90 days. Your workout totals stay in history.</Text>
         <Button title="Start outdoor run" loading={busy} onPress={() => void action(async () => {
           setType(null); setEffort(null); await startRecorder(owner);
         }, "Could not start GPS. Check location settings and retry.")} />
@@ -135,8 +135,9 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           <Button title="Finish and save run" disabled={busy || !type || km <= 0} onPress={() => type && void action(async () => {
             await finishRecorder(owner, run.id, type, effort);
             show(run.id);
-            await saveRunHistory(owner, run.id);
-          }, "Run saved on this iPhone. Reconnect and retry workout history.")} />
+            if (run.autoBackup) await backupRoute(owner, run.id);
+            else await saveRunHistory(owner, run.id);
+          }, "Run saved on this iPhone. Reconnect to sync.")} />
           <Button title="Discard draft" variant="text" disabled={busy} onPress={() => Alert.alert("Discard this run?", "This removes the unfinished run and its route from your iPhone.", [
             { text: "Keep run", style: "cancel" }, { text: "Discard", style: "destructive", onPress: () => void action(() => discardDraft(owner, run.id), "Could not discard this draft.") },
           ])} />
@@ -152,7 +153,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           {legs(run.points).length > 1 && <Text style={muted}>The route has separate sections where tracking paused or GPS signal was lost.</Text>}
           <Text style={{ ...style, fontWeight: "600" }}>GPS splits · active pace</Text>
           {splits(run).map((s, i) => <Text key={i} style={style}>{s.partial ? "Final " + (s.distance / 1000).toFixed(2) + " km" : "Kilometre " + (i + 1)} · {cardioTime(s.seconds)} · {cardioPace(s.seconds / (s.distance / 1000))}</Text>)}
-          {run.routeSynced ? <Text style={muted}>Private route backed up</Text> : <Button variant="outline" title="Back up private route" disabled={busy} onPress={() => void action(() => backupRoute(owner, run.id), "Private backup is unavailable. The complete route and splits are saved on this iPhone.")} />}
+          {routeExpired(run.start) ? <Text style={muted}>GPS detail expired after 90 days. Your workout totals are saved.</Text> : run.routeSynced ? <Text style={muted}>Private route backed up</Text> : <Button variant="outline" title={run.autoBackup ? "Retry private route sync" : "Back up private route"} disabled={busy} onPress={() => void action(() => backupRoute(owner, run.id), "Private backup is unavailable. The complete route and splits are saved on this iPhone.")} />}
           {!historyId && <Button title={progress ? "Back to runs" : "Return to recorder"} variant="secondary" onPress={() => { setSelected(null); setMessage(""); }} />}
         </>}
       </>}

@@ -4,7 +4,7 @@ import { Button } from "@/ui";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "@/app/features/cardio/tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
-import { benchmarks, bestSegment, meters, type Run } from "./runMetrics";
+import { benchmarks, runBest, meters, type Run } from "./runMetrics";
 
 export function RunInsights({ runs, open }: { runs: Run[]; open: (id: string) => void }) {
   const { colors } = useAppTheme();
@@ -13,7 +13,7 @@ export function RunInsights({ runs, open }: { runs: Run[]; open: (id: string) =>
   const records = useMemo(() => benchmarks.map(distance => {
     let best: { time: number; run: Run } | null = null;
     for (const run of results) {
-      const time = bestSegment(run.points, distance);
+      const time = runBest(run, distance);
       if (time !== null && (!best || time < best.time)) best = { time, run };
     }
     return { distance, best };

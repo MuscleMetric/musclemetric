@@ -1,4 +1,6 @@
 import "react-native-url-polyfill/auto";
+import { pruneDeviceRoutes, subscribeRuns } from "@/features/cardio/runStore";
+import { retryRunUploads } from "@/features/cardio/syncRun";
 import { reconcileRecorder } from "@/features/cardio/recorder";
 import { useEffect } from "react";
 import {
@@ -65,11 +67,33 @@ function RootNavigator() {
   useEffect(() => {
     if (loading || Platform.OS !== "ios") return;
     const reconcile = () => { void reconcileRecorder(owner).catch(() => undefined); };
-    reconcile();
-    const subscription = AppState.addEventListener("change", state => {
-      if (state === "active") reconcile();
+    let retryNeeded = true;
+    let retrying = false;
+    const sync = async () => {
+      if (!owner || retrying || !retryNeeded) return;
+      retrying = true;
+      retryNeeded = false;
+      try {
+        if (await retryRunUploads(owner)) retryNeeded = true;
+      } catch { retryNeeded = true; }
+      finally { retrying = false; }
+    };
+    const unsubscribe = subscribeRuns((changedOwner, _id, run) => {
+      if (changedOwner === owner && run?.autoBackup && run.end !== null && !run.routeSynced) retryNeeded = true;
     });
-    return () => subscription.remove();
+    const maintain = () => {
+      reconcile();
+      retryNeeded = true;
+      void pruneDeviceRoutes().catch(() => undefined).then(sync);
+    };
+    maintain();
+    const retry = setInterval(() => {
+      if (AppState.currentState === "active") void sync();
+    }, 60000);
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") maintain();
+    });
+    return () => { unsubscribe(); clearInterval(retry); subscription.remove(); };
   }, [loading, owner]);
 
   useEffect(() => {

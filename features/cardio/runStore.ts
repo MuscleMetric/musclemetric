@@ -1,7 +1,7 @@
 import { endRunActivity } from "./runActivity";
 import Storage from "@react-native-async-storage/async-storage";
 import { randomUUID } from "expo-crypto";
-import { activeMs, type Run } from "./runMetrics";
+import { activeMs, benchmarks, bestSegment, meters, routeExpired, type Run } from "./runMetrics";
 
 const prefix = "mm:gps:v1:";
 const pointer = "mm:gps:running";
@@ -21,17 +21,32 @@ export function subscribeRuns(listener: RunListener) {
   return () => { listeners.delete(listener); };
 }
 
-async function read(key: string): Promise<Run | null> {
+async function read(key: string, purge = false): Promise<Run | null> {
   const value = await Storage.getItem(key);
   if (!value) return null;
   const run: Run = JSON.parse(value);
   if (run.version !== 1 || keyFor(run.owner, run.id) !== key) throw Error("Invalid run draft");
+  if (run.points.length && routeExpired(run.start)) {
+    run.summaryMeters = meters(run);
+    run.bestSeconds = {};
+    for (const distance of benchmarks) {
+      const seconds = bestSegment(run.points, distance);
+      if (seconds !== null) run.bestSeconds[distance] = seconds;
+    }
+    run.points = [];
+    if (purge) await Storage.setItem(key, JSON.stringify(run));
+  }
   return run;
+}
+
+export async function pruneDeviceRoutes() {
+  const keys = (await Storage.getAllKeys()).filter(key => key.startsWith(prefix));
+  for (const key of keys) await serialize(() => read(key, true));
 }
 
 export async function listRuns(owner: string) {
   const keys = (await Storage.getAllKeys()).filter(k => k.startsWith(prefix + owner + ":"));
-  const runs = await Promise.all(keys.map(read));
+  const runs = await Promise.all(keys.map(key => read(key)));
   return runs.filter((run): run is Run => !!run).sort((a, b) => b.start - a.start);
 }
 
@@ -54,7 +69,7 @@ export async function writeRun(run: Run) {
 export async function makeRun(owner: string): Promise<Run> {
   if ((await listRuns(owner)).some(run => run.end === null)) throw Error("Finish your current run first.");
   const now = Date.now();
-  return { id: randomUUID(), owner, version: 1, start: now, end: null, type: null, effort: null,
+  return { id: randomUUID(), owner, version: 1, autoBackup: true, start: now, end: null, type: null, effort: null,
     leg: 0, accumulatedMs: 0, activeSince: null, points: [], rejected: 0, historyId: null, routeSynced: false };
 }
 
