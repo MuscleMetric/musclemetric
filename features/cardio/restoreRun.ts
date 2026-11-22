@@ -24,6 +24,6 @@ export async function restoreHistoryRun(owner: string, historyId: string): Promi
     if (rows.data.length < page) break;
   }
   return { version: 1, id: h.id, owner, points, start: Date.parse(h.started_at), end: Date.parse(h.completed_at),
-    accumulatedMs: h.moving_seconds * 1000, activeSince: null, historyId, rejected: 0, leg: points.at(-1)?.leg ?? 0,
+    accumulatedMs: h.moving_seconds * 1000, activeSince: null, historyId, rejected: 0, leg: points[points.length - 1]?.leg ?? 0,
     type: h.run_type, effort: h.effort_rpe, routeSynced: true };
 }

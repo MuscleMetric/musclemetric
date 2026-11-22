@@ -44,7 +44,7 @@ export function reconcileRecorder(owner: string | null) {
       return;
     }
     if (run.owner !== owner || !(await Location.hasStartedLocationUpdatesAsync(task))) {
-      const last = run.points.at(-1)?.time ?? run.activeSince;
+      const last = run.points[run.points.length - 1]?.time ?? run.activeSince;
       pauseClock(run, Math.max(run.activeSince, last));
       await writeRun(run);
       await stopUpdates();

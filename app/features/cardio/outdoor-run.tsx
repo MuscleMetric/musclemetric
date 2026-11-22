@@ -98,7 +98,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const done = run?.end != null;
   const elapsed = run ? activeMs(run, now) / 1000 : 0;
   const km = run ? meters(run) / 1000 : 0;
-  const last = run?.points.at(-1);
+  const last = run ? run.points[run.points.length - 1] : undefined;
   const canStart = loaded && !draft && !historyId && !progress && !run;
   const saveHistory = (r: Run) => void action(() => saveRunHistory(owner, r.id), "Saved on this iPhone. Reconnect and retry workout history.");
   return <Screen>
@@ -115,7 +115,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
         }, "Could not start GPS. Check location settings and retry.")} />
       </>}
       {run && <>
-        <Text style={{ ...style, fontSize: 22, fontWeight: "600" }}>{done ? (run.type ? RUN_TYPE_LABELS[run.type] + " run" : "Completed run") : running ? "Recording" : "Paused"}</Text>
+        <Text style={{ ...style, fontSize: 22, fontWeight: "600" }}>{done ? (run.type === "long_run" ? "Long run" : run.type ? RUN_TYPE_LABELS[run.type] + " run" : "Completed run") : running ? "Recording" : "Paused"}</Text>
         <Text style={{ ...style, fontSize: 32, fontWeight: "700" }}>{km.toFixed(2)} km</Text>
         <Text style={style}>Active time {cardioTime(elapsed) === "—" ? "0:00" : cardioTime(elapsed)} · Pace {cardioPace(km ? elapsed / km : null)}</Text>
         {running && <Text style={muted}>{!last || last.leg !== run.leg || now - last.time > 30000 ? "Waiting for a reliable GPS fix. Check Precise Location and move into open sky." : "GPS signal received"}</Text>}
@@ -157,7 +157,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
         </>}
       </>}
       {!!message && !done && <Button title="Open iPhone settings" variant="text" onPress={() => { void Linking.openSettings(); }} />}
-      {loaded && !historyId && !run && !draft && <RunInsights runs={runs} open={show} />}
+      {loaded && !historyId && !run && (!draft || progress) && <RunInsights runs={runs} open={show} />}
     </ScrollView>
   </Screen>;
 }

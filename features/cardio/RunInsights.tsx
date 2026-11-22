@@ -21,7 +21,14 @@ export function RunInsights({ runs, open }: { runs: Run[]; open: (id: string) =>
   const monday = new Date();
   monday.setHours(0, 0, 0, 0);
   monday.setDate(monday.getDate() - (monday.getDay() + 6) % 7);
-  const week = results.filter(r => r.start >= +monday);
+  const weeks = [0, 1, 2, 3].map(offset => {
+    const start = new Date(monday);
+    start.setDate(start.getDate() - 7 * offset);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 7);
+    const matches = results.filter(r => r.start >= +start && r.start < +end);
+    return { start, count: matches.length, km: matches.reduce((sum, r) => sum + meters(r), 0) / 1000 };
+  });
   const longest = results.reduce<Run | null>((best, r) => !best || meters(r) > meters(best) ? r : best, null);
   const latest = results[0];
   const comparable = latest && results.slice(1).find(r => r.type === latest.type && Math.abs(meters(r) / meters(latest) - 1) <= 0.1);
@@ -33,7 +40,10 @@ export function RunInsights({ runs, open }: { runs: Run[]; open: (id: string) =>
       {[null, ...RUN_TYPES].map(t => <Button key={t ?? "all"} title={t ? RUN_TYPE_LABELS[t] : "All"}
         fullWidth={false} variant={type === t ? "primary" : "outline"} onPress={() => setType(t)} />)}
     </View>
-    <Text style={style}>This week · {week.length} runs · {(week.reduce((sum, r) => sum + meters(r), 0) / 1000).toFixed(2)} km</Text>
+    <Text style={{ ...style, fontWeight: "600" }}>Weekly distance</Text>
+    {weeks.map((week, i) => <Text key={week.start.toISOString()} style={style}>
+      {i === 0 ? "This week" : "Week of " + week.start.toLocaleDateString()} · {week.count} {week.count === 1 ? "run" : "runs"} · {week.km.toFixed(2)} km
+    </Text>)}
     {comparable && <Text style={style}>Latest pace {cardioPace(pace(latest))} · previous similar run {cardioPace(pace(comparable))} ({new Date(comparable.start).toLocaleDateString()})</Text>}
     <Text style={{ ...style, fontWeight: "600" }}>GPS personal bests</Text>
     {records.map(({ distance, best }) => <Text key={distance} style={style}>{distance / 1000} km · {best ? cardioTime(best.time) + " · " + new Date(best.run.start).toLocaleDateString() : "No continuous GPS result"}</Text>)}

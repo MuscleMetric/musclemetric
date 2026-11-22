@@ -24,7 +24,7 @@ export function activeMs(run: Run, now: number) {
 }
 
 export function meters(run: Run) {
-  return run.points.at(-1)?.meters ?? 0;
+  return run.points[run.points.length - 1]?.meters ?? 0;
 }
 
 function separation(a: Fix, b: Fix) {
@@ -39,7 +39,7 @@ function separation(a: Fix, b: Fix) {
 export function appendFixes(run: Run, fixes: Fix[], receivedAt: number) {
   if (run.activeSince === null || run.end !== null) return;
   for (const fix of [...fixes].sort((a, b) => a.time - b.time)) {
-    const prev = run.points.at(-1);
+    const prev = run.points[run.points.length - 1];
     if (!Number.isFinite(fix.time) || fix.time < run.activeSince || fix.time > receivedAt + 1000 ||
         (prev && fix.time <= prev.time)) continue;
     if (![fix.latitude, fix.longitude, fix.accuracy].every(Number.isFinite) ||
@@ -64,7 +64,7 @@ export function appendFixes(run: Run, fixes: Fix[], receivedAt: number) {
 export function legs(points: Point[]) {
   const result: Point[][] = [];
   for (const point of points) {
-    if (result.at(-1)?.[0].leg !== point.leg) result.push([]);
+    if (result[result.length - 1]?.[0].leg !== point.leg) result.push([]);
     result[result.length - 1].push(point);
   }
   return result;
@@ -86,7 +86,7 @@ export function splits(run: Run) {
     }
   }
   const remaining = meters(run) - result.length * 1000;
-  const last = run.points.at(-1);
+  const last = run.points[run.points.length - 1];
   if (last && remaining >= 0.01) {
     const end = run.end ?? last.time;
     const time = run.end === null ? last.activeMs : run.accumulatedMs;
