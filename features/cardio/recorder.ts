@@ -5,6 +5,8 @@ import { RUN_TYPES, type RunType } from "@/app/features/cardio/tracking/types";
 import { appendFixes, meters } from "./runMetrics";
 import { currentRecorder, makeRun, pauseClock, readRun, serialize, setRecorder, writeRun } from "./runStore";
 
+import { endRunActivity, refreshRunActivity } from "./runActivity";
+
 const task = "musclemetric.private-outdoor-run.v1";
 
 // Undefined during a headless background launch. A known signed-out state is null.
@@ -27,6 +29,7 @@ if (Platform.OS === "ios" && !TaskManager.isTaskDefined(task)) {
         time: timestamp, latitude: coords.latitude, longitude: coords.longitude, accuracy: coords.accuracy ?? -1,
       }));
       appendFixes(run, fixes, Date.now());
+      refreshRunActivity(run, "gps");
       await writeRun(run);
     });
   });
@@ -39,6 +42,10 @@ export function reconcileRecorder(owner: string | null) {
   return serialize(async () => {
     if (Platform.OS !== "ios") return;
     const run = await currentRecorder();
+    if (run?.activityId && run.owner !== owner) {
+      endRunActivity(run);
+      await writeRun(run);
+    }
     if (!run || run.activeSince === null || run.end !== null) {
       await stopUpdates();
       return;
@@ -46,6 +53,7 @@ export function reconcileRecorder(owner: string | null) {
     if (run.owner !== owner || !(await Location.hasStartedLocationUpdatesAsync(task))) {
       const last = run.points[run.points.length - 1]?.time ?? run.activeSince;
       pauseClock(run, Math.max(run.activeSince, last));
+      refreshRunActivity(run, "control");
       await writeRun(run);
       await stopUpdates();
     }
@@ -83,6 +91,8 @@ export async function startRecorder(owner: string, id?: string) {
       await writeRun(run);
       throw new RunActionError("GPS could not start. Check location settings and tap Resume.");
     }
+    refreshRunActivity(run, "start");
+    await writeRun(run);
   });
 }
 
@@ -91,6 +101,7 @@ export function pauseRecorder(owner: string, id: string) {
     const run = await readRun(owner, id);
     if (run.activeSince === null) return;
     pauseClock(run, Date.now());
+    refreshRunActivity(run, "control");
     await writeRun(run);
     await stopUpdates();
   });
@@ -106,6 +117,7 @@ export function finishRecorder(owner: string, id: string, type: RunType, effort:
     run.type = type;
     run.effort = effort;
     run.end = Date.now();
+    endRunActivity(run);
     await writeRun(run);
   });
 }

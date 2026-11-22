@@ -1,7 +1,10 @@
+import * as Activity from "expo-live-activity";
 import Storage from "@react-native-async-storage/async-storage";
 import * as Location from "expo-location";
 import { finishRecorder, pauseRecorder, reconcileRecorder, startRecorder } from "@/features/cardio/recorder";
 import { listRuns, readRun } from "@/features/cardio/runStore";
+
+jest.mock("expo-live-activity", () => ({ startActivity: jest.fn(), updateActivity: jest.fn(), stopActivity: jest.fn() }));
 
 type Delivery = (event: unknown) => Promise<void>;
 let mockDeliver: Delivery;
@@ -19,6 +22,7 @@ const memory = new Map<string, string>();
 let on = false;
 beforeEach(() => {
   memory.clear();
+  jest.mocked(Activity.startActivity).mockReturnValue("activity");
   on = false;
   jest.mocked(Storage.getItem).mockImplementation(async k => memory.get(k) ?? null);
   jest.mocked(Storage.setItem).mockImplementation(async (k, v) => { memory.set(k, v); });
@@ -70,4 +74,33 @@ test("interrupted native tracking restores a paused draft at the last fix", asyn
   jest.setSystemTime(200000);
   await reconcileRecorder("a");
   expect((await listRuns("a"))[0]).toMatchObject({ accumulatedMs: 5000, activeSince: null });
+});
+
+test("lock screen receives measured pace, freezes on pause and ends on finish", async () => {
+  await reconcileRecorder("a");
+  await startRecorder("a");
+  await deliver(100000, 0);
+  await deliver(110000, 0.0004);
+  expect(Activity.updateActivity).toHaveBeenLastCalledWith("activity", {
+    title: "Outdoor Run", subtitle: "0.04 km\n3:45 /km\n0:00", progressBar: { date: 100000 },
+  });
+  await pauseRecorder("a", "stable-run-id");
+  expect(Activity.updateActivity).toHaveBeenLastCalledWith("activity", {
+    title: "Outdoor Run · Paused", subtitle: "0.04 km\n—\n0:10", progressBar: undefined,
+  });
+  jest.setSystemTime(200000);
+  await startRecorder("a", "stable-run-id");
+  expect(Activity.updateActivity).toHaveBeenLastCalledWith("activity", expect.objectContaining({ progressBar: { date: 190000 } }));
+  expect(Activity.startActivity).toHaveBeenCalledTimes(1);
+  await pauseRecorder("a", "stable-run-id");
+  await finishRecorder("a", "stable-run-id", "easy", null);
+  expect(Activity.stopActivity).toHaveBeenCalledWith("activity", expect.anything());
+});
+
+test("disabled Live Activities leave GPS recording available", async () => {
+  jest.mocked(Activity.startActivity).mockImplementation(() => { throw Error("disabled"); });
+  await reconcileRecorder("a");
+  await startRecorder("a");
+  expect(on).toBe(true);
+  expect((await listRuns("a"))[0].activityId).toBeUndefined();
 });

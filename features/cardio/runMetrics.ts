@@ -4,6 +4,8 @@ export type Fix = { latitude: number; longitude: number; accuracy: number; time:
 export type Point = Fix & { leg: number; meters: number; activeMs: number };
 export type Run = {
   version: 1;
+  activityId?: string;
+  activityUpdatedAt?: number;
   id: string;
   owner: string;
   start: number;

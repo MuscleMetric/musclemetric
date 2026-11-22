@@ -1,3 +1,4 @@
+import { endRunActivity } from "./runActivity";
 import Storage from "@react-native-async-storage/async-storage";
 import { randomUUID } from "expo-crypto";
 import { activeMs, type Run } from "./runMetrics";
@@ -70,6 +71,7 @@ export async function discardDraft(owner: string, id: string) {
   return serialize(async () => {
     const run = await readRun(owner, id);
     if (run.activeSince !== null || run.end !== null) throw Error("Pause the run before discarding.");
+    endRunActivity(run);
     await Storage.removeItem(keyFor(owner, id));
     listeners.forEach(listener => listener(owner, id, null));
   });
