@@ -64,3 +64,10 @@ test("an overdue offline run still saves workout totals without uploading GPS", 
   expect(supabase.from).toHaveBeenCalledTimes(1);
   expect(run.routeSynced).toBe(false);
 });
+
+test("finishing an outdoor set cannot create a standalone history record", async () => {
+  run.workoutSet = { draftId: "parent", exerciseId: "exercise", orderIndex: 0, setNumber: 1, name: "Outdoor Run" };
+  await backupRoute("a", run.id);
+  expect(saveRpcWorkout).not.toHaveBeenCalled();
+  expect(supabase.from).not.toHaveBeenCalled();
+});

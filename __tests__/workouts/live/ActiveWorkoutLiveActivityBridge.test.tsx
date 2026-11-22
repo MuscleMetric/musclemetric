@@ -1,3 +1,4 @@
+jest.mock("@/features/cardio/runStore", () => ({ currentRecorder: async () => null, subscribeRuns: () => () => {} }));
 /**
  * ActiveWorkoutLiveActivityBridge.test.tsx
  *

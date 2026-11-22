@@ -2,7 +2,7 @@ import * as Location from "expo-location";
 import * as TaskManager from "expo-task-manager";
 import { Platform } from "react-native";
 import { RUN_TYPES, type RunType } from "@/app/features/cardio/tracking/types";
-import { appendFixes, meters } from "./runMetrics";
+import { appendFixes, meters, type Run } from "./runMetrics";
 import { currentRecorder, makeRun, pauseClock, readRun, serialize, setRecorder, writeRun } from "./runStore";
 
 import { endRunActivity, refreshRunActivity } from "./runActivity";
@@ -60,7 +60,7 @@ export function reconcileRecorder(owner: string | null) {
   });
 }
 
-export async function startRecorder(owner: string, id?: string) {
+export async function startRecorder(owner: string, id?: string, workoutSet?: Run["workoutSet"]) {
   if (Platform.OS !== "ios") throw new RunActionError("Outdoor tracking requires an iPhone.");
   if (!(await Location.hasServicesEnabledAsync())) throw new RunActionError("Turn on Location Services in Settings to start GPS.");
   const foreground = await Location.requestForegroundPermissionsAsync();
@@ -76,6 +76,7 @@ export async function startRecorder(owner: string, id?: string) {
     if (current && current.activeSince !== null) throw new RunActionError("A run is already recording.");
     const run = id ? await readRun(owner, id) : await makeRun(owner);
     if (run.end !== null) throw new RunActionError("This run has finished.");
+    if (!id && workoutSet) run.workoutSet = workoutSet;
     run.leg++;
     run.activeSince = Date.now();
     await writeRun(run);
@@ -93,6 +94,7 @@ export async function startRecorder(owner: string, id?: string) {
     }
     refreshRunActivity(run, "start");
     await writeRun(run);
+    return run;
   });
 }
 
@@ -107,11 +109,11 @@ export function pauseRecorder(owner: string, id: string) {
   });
 }
 
-export function finishRecorder(owner: string, id: string, type: RunType, effort: number | null) {
+export function finishRecorder(owner: string, id: string, type: RunType | null, effort: number | null) {
   return serialize(async () => {
     const run = await readRun(owner, id);
     if (run.end !== null) return;
-    if (!RUN_TYPES.includes(type)) throw new RunActionError("Choose a run type before finishing.");
+    if (type === null ? !run.workoutSet || /\brun(?:ning)?\b/i.test(run.workoutSet.name) : !RUN_TYPES.includes(type)) throw new RunActionError("Choose a run type before finishing.");
     if (run.activeSince !== null || meters(run) <= 0) throw new RunActionError("Pause after recording some distance to finish.");
     if (effort !== null && (!Number.isInteger(effort) || effort < 1 || effort > 10)) throw new RunActionError("Effort must be between 1 and 10.");
     run.type = type;

@@ -104,3 +104,16 @@ test("disabled Live Activities leave GPS recording available", async () => {
   expect(on).toBe(true);
   expect((await listRuns("a"))[0].activityId).toBeUndefined();
 });
+
+test("starts an outdoor workout set with its exercise identity and keeps the lock-screen link inside the workout", async () => {
+  await reconcileRecorder("a");
+  const target = { draftId: "workout", exerciseId: "walk", name: "Outdoor Walk", setNumber: 2, orderIndex: 1 };
+  const run = await startRecorder("a", undefined, target);
+  await deliver(100000, 0);
+  await deliver(110000, 0.0004);
+  expect(Activity.startActivity).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Outdoor Walk" }),
+    { deepLinkUrl: "features/workouts/live?outdoor=1" });
+  await pauseRecorder("a", run.id);
+  await finishRecorder("a", run.id, null, 2);
+  expect(await readRun("a", run.id)).toMatchObject({ workoutSet: target, accumulatedMs: 10000, effort: 2, end: 110000 });
+});

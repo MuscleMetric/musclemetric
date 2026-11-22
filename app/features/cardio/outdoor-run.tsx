@@ -40,7 +40,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
     const refresh = async () => {
       const ticket = ++sequence;
       try {
-        const items = await listRuns(owner);
+        const items = (await listRuns(owner)).filter(item => !item.workoutSet || (item.end !== null && !!item.type && !!item.historyId));
         if (!alive || ticket !== sequence) return;
         setRuns(items);
         if (historyId && !items.some(r => r.historyId === historyId)) {
@@ -56,7 +56,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
       }
     };
     const unsubscribe = subscribeRuns((changedOwner, id, changed) => {
-      if (changedOwner !== owner) return;
+      if (changedOwner !== owner || (changed?.workoutSet && (!changed.historyId || !changed.type))) return;
       if (!ready) { void refresh(); return; }
       setRuns(previous => {
         const remaining = previous.filter(r => r.id !== id);
@@ -80,7 +80,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
     const interval = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(interval);
   }, [running]);
-  const action = async (fn: () => Promise<void>, fallback: string) => {
+  const action = async (fn: () => Promise<unknown>, fallback: string) => {
     if (lock.current) return;
     lock.current = true;
     setBusy(true);

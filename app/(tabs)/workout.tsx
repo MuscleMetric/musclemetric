@@ -1,11 +1,24 @@
 // app/(tabs)/workout.tsx
-import React from "react";
+import React, { useCallback, useState } from "react";
 import { Button } from "@/ui";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { Platform, View } from "react-native";
+import { useAuth } from "@/lib/authContext";
+import { listRuns } from "@/features/cardio/runStore";
 import WorkoutsHome from "../features/workouts/screens/WorkoutsHome";
 
 export default function WorkoutScreen() {
+  const { userId } = useAuth();
+  const [legacyOwner, setLegacyOwner] = useState<string | null>(null);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    if (Platform.OS === "ios" && userId) {
+      void listRuns(userId).then(runs => {
+        if (active) setLegacyOwner(runs.some(run => !run.workoutSet && run.end === null) ? userId : null);
+      }).catch(() => { if (active) setLegacyOwner(null); });
+    }
+    return () => { active = false; };
+  }, [userId]));
   return (
     <View
       style={{
@@ -15,8 +28,8 @@ export default function WorkoutScreen() {
         alignSelf: "center",
       }}
     >
-      {Platform.OS === "ios" && <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
-        <Button title="Outdoor Run" variant="outline" onPress={() => router.push("/features/cardio/outdoor-run")} />
+      {userId && legacyOwner === userId && <View style={{ paddingHorizontal: 16, paddingVertical: 6 }}>
+        <Button title="Resume outdoor run" variant="outline" onPress={() => router.push("/features/cardio/outdoor-run")} />
       </View>}
       <WorkoutsHome />
     </View>

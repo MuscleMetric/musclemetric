@@ -3,9 +3,10 @@ import { routeExpired, type Point, type Run } from "./runMetrics";
 
 // A history link can be opened on a second phone. Only complete owner backups
 // are readable here; never infer continuity from samples lacking segment metadata.
-export async function restoreHistoryRun(owner: string, historyId: string): Promise<Run | null> {
-  const header = await supabase.from("cardio_recordings").select("*")
-    .eq("user_id", owner).eq("workout_history_id", historyId).eq("source", "gps").eq("status", "completed").maybeSingle();
+export async function restoreHistoryRun(owner: string, historyId: string, slot?: string): Promise<Run | null> {
+  const query = supabase.from("cardio_recordings").select("*")
+    .eq("user_id", owner).eq("workout_history_id", historyId).eq("source", "gps").eq("status", "completed");
+  const header = await (slot ? query.eq("workout_slot", slot) : query.is("workout_slot", null)).maybeSingle();
   if (header.error) throw Error("Private route unavailable");
   if (!header.data) return null;
   const h = header.data;

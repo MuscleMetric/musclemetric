@@ -48,12 +48,12 @@ struct LiveActivityAttributes: ActivityAttributes {
 struct LiveActivityWidget: Widget {
   var body: some WidgetConfiguration {
     ActivityConfiguration(for: LiveActivityAttributes.self) { context in
-      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" {
+      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" || context.attributes.deepLinkUrl == "features/workouts/live?outdoor=1" {
         RunActivityView(state: context.state)
           .padding()
           .activityBackgroundTint(.black)
           .foregroundStyle(.white)
-          .widgetURL(URL(string: "musclemetric://features/cardio/outdoor-run"))
+          .widgetURL(URL(string: "musclemetric://" + (context.attributes.deepLinkUrl ?? "features/cardio/outdoor-run")))
       } else {
         LiveActivityView(contentState: context.state, attributes: context.attributes)
           .activityBackgroundTint(
@@ -63,7 +63,7 @@ struct LiveActivityWidget: Widget {
           .applyWidgetURL(from: context.attributes.deepLinkUrl)
       }
     } dynamicIsland: { context in
-      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" {
+      if context.attributes.deepLinkUrl == "features/cardio/outdoor-run" || context.attributes.deepLinkUrl == "features/workouts/live?outdoor=1" {
         return DynamicIsland {
           DynamicIslandExpandedRegion(.center) { RunActivityView(state: context.state) }
         } compactLeading: {
@@ -72,7 +72,7 @@ struct LiveActivityWidget: Widget {
           Text(context.state.runDistance).monospacedDigit()
         } minimal: {
           Image(systemName: "figure.run")
-        }.widgetURL(URL(string: "musclemetric://features/cardio/outdoor-run"))
+        }.widgetURL(URL(string: "musclemetric://" + (context.attributes.deepLinkUrl ?? "features/cardio/outdoor-run")))
       }
       return DynamicIsland {
         DynamicIslandExpandedRegion(.leading, priority: 1) {
@@ -197,8 +197,13 @@ private struct RunActivityView: View {
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
-      Label(state.title, systemImage: "figure.run").font(.headline)
-      HStack(alignment: .top, spacing: 12) {
+      HStack {
+        Text("MuscleMetric").font(.headline)
+        Spacer()
+        Label(state.title, systemImage: state.title.localizedCaseInsensitiveContains("walk") ? "figure.walk" : state.title.localizedCaseInsensitiveContains("cycl") ? "bicycle" : "figure.run")
+          .font(.subheadline.weight(.semibold)).lineLimit(1)
+      }
+      HStack(alignment: .top, spacing: 6) {
         VStack(alignment: .leading) {
           Text("Active time").font(.caption)
           if let origin = state.timerEndDateInMilliseconds {
@@ -206,15 +211,15 @@ private struct RunActivityView: View {
           } else {
             Text(state.runMetrics.last ?? "0:00")
           }
-        }
-        VStack(alignment: .leading) {
-          Text("Distance").font(.caption)
-          Text(state.runDistance)
-        }
+        }.frame(maxWidth: .infinity, alignment: .leading)
         VStack(alignment: .leading) {
           Text("Current pace").font(.caption)
           Text(state.runMetrics.count > 1 ? state.runMetrics[1] : "—")
-        }
+        }.frame(maxWidth: .infinity, alignment: .leading)
+        VStack(alignment: .leading) {
+          Text("Distance").font(.caption)
+          Text(state.runDistance)
+        }.frame(maxWidth: .infinity, alignment: .leading)
       }.font(.title3).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
     }.frame(maxWidth: .infinity, alignment: .leading)
   }

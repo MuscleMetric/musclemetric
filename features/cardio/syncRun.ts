@@ -1,3 +1,5 @@
+import { routeSlot } from "./workoutOutdoor";
+import type { LiveWorkoutDraft } from "@/app/features/workouts/live/state/types";
 import { supabase } from "@/lib/supabase";
 import { saveRpcWorkout } from "@/lib/workoutSaveRpc";
 import { RUN_TYPE_LABELS } from "@/app/features/cardio/tracking/types";
@@ -7,16 +9,36 @@ import { listRuns, readRun, serialize, writeRun } from "./runStore";
 const iso = (ms: number) => new Date(ms).toISOString();
 const seconds = (ms: number) => Math.round(ms / 1000);
 
-async function checkpoint(owner: string, id: string, patch: Partial<Pick<Run, "historyId" | "routeSynced">>) {
+async function checkpoint(owner: string, id: string, patch: Partial<Pick<Run, "historyId" | "routeSynced" | "workoutSaveRequested">>) {
   await serialize(async () => {
     const current = await readRun(owner, id);
     await writeRun({ ...current, ...patch });
   });
 }
 
+export async function prepareWorkoutRoutes(draft: LiveWorkoutDraft) {
+  const ids = new Set(draft.exercises.flatMap(exercise => exercise.sets.map(set => set.gpsRecordingId).filter(Boolean)));
+  for (const run of await listRuns(draft.userId)) {
+    if (run.workoutSet?.draftId !== draft.draftId || run.historyId) continue;
+    const include = ids.has(run.id);
+    if (include !== !!run.workoutSaveRequested) {
+      await checkpoint(draft.userId, run.id, { workoutSaveRequested: include });
+    }
+  }
+}
+
 export async function saveRunHistory(owner: string, id: string) {
   const run = await readRun(owner, id);
-  if (run.end === null || !run.type || run.historyId) return;
+  if (run.end === null || run.historyId) return;
+  if (run.workoutSet) {
+    if (!run.workoutSaveRequested) return;
+    const parent = await supabase.from("workout_history").select("id").eq("user_id", owner)
+      .eq("client_save_id", run.workoutSet.draftId).maybeSingle();
+    if (parent.error || !parent.data) throw Error("Workout save pending");
+    await checkpoint(owner, id, { historyId: parent.data.id });
+    return;
+  }
+  if (!run.type) return;
   const exercise = await supabase.from("exercises").select("id").eq("name", "Outdoor Run")
     .eq("type", "cardio").eq("is_public", true).single();
   if (exercise.error) throw Error("Outdoor Run unavailable");
@@ -49,7 +71,7 @@ export function backupRoute(owner: string, id: string) {
 export async function retryRunUploads(owner: string) {
   let pending = false;
   for (const run of await listRuns(owner)) {
-    if (run.autoBackup && run.end !== null && !run.routeSynced && (!routeExpired(run.start) || !run.historyId)) {
+    if ((!run.workoutSet || run.workoutSaveRequested) && run.autoBackup && run.end !== null && !run.routeSynced && (!routeExpired(run.start) || !run.historyId)) {
       try { await backupRoute(owner, run.id); } catch { pending = true; }
     }
   }
@@ -59,8 +81,9 @@ export async function retryRunUploads(owner: string) {
 async function uploadRoute(owner: string, id: string) {
   await saveRunHistory(owner, id);
   const run = await readRun(owner, id);
-  if (!run.historyId || run.end === null || !run.type || run.routeSynced || routeExpired(run.start)) return;
+  if (!run.historyId || run.end === null || (!run.type && !run.workoutSet) || run.routeSynced || routeExpired(run.start)) return;
   const header = { id, user_id: owner, workout_history_id: run.historyId,
+    ...(run.workoutSet ? { workout_slot: routeSlot(run.workoutSet.exerciseId, run.workoutSet.orderIndex, run.workoutSet.setNumber) } : {}),
     source: "gps", status: "paused", started_at: iso(run.start) };
   const parent = await supabase.from("cardio_recordings").upsert(header, { onConflict: "id", ignoreDuplicates: true });
   if (parent.error) throw Error("Route backup unavailable");

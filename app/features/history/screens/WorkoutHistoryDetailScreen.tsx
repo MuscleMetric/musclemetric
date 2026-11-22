@@ -20,6 +20,7 @@ import {
   Icon,
 } from "@/ui";
 
+import { routeSlot } from "@/features/cardio/workoutOutdoor";
 import { RunHistoryDetail } from "@/features/cardio/RunHistoryDetail";
 import { HistorySectionHeader } from "../ui/HistorySectionHeader";
 import { PRBadge } from "../ui/PRBadge";
@@ -535,9 +536,14 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         </View>
 
-        {Platform.OS === "ios" && exercises.some(e => e.exercise_name === "Outdoor Run") &&
-          <RunHistoryDetail historyId={header.workout_history_id} completedAt={header.completed_at}
-            recorded={!!header.notes?.includes("outdoor run")} distance={stats?.distance_total} duration={stats?.duration_seconds} />}
+        {Platform.OS === "ios" && exercises.filter(ex => /\boutdoor\b/i.test(ex.exercise_name)).flatMap(ex =>
+          (ex.sets ?? []).map(set => {
+            const legacy = !!header.notes?.includes("outdoor run") && exercises.length === 1 && ex.exercise_name === "Outdoor Run" && set.set_number === 1;
+            const slot = routeSlot(ex.exercise_id, ex.order_index ?? 0, set.set_number);
+            return <RunHistoryDetail key={slot} name={ex.exercise_name} slot={slot}
+              historyId={header.workout_history_id} completedAt={header.completed_at}
+              recorded={legacy} distance={set.distance} duration={set.time_seconds} />;
+          }))}
         {header.notes ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
             <Text

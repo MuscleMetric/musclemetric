@@ -3,6 +3,8 @@ import type { RunType } from "@/app/features/cardio/tracking/types";
 export type Fix = { latitude: number; longitude: number; accuracy: number; time: number };
 export type Point = Fix & { leg: number; meters: number; activeMs: number };
 export type Run = {
+  workoutSet?: import("./workoutOutdoor").OutdoorSet;
+  workoutSaveRequested?: boolean;
   version: 1;
   autoBackup?: boolean;
   summaryMeters?: number;
@@ -61,7 +63,8 @@ export function appendFixes(run: Run, fixes: Fix[], receivedAt: number) {
     let step = 0;
     if (prev && prev.leg === run.leg) {
       step = separation(prev, fix);
-      if (step > 12 * (fix.time - prev.time) / 1000) {
+      const maxSpeed = /cycl|bik|ride/i.test(run.workoutSet?.name ?? "") ? 35 : 12;
+      if (step > maxSpeed * (fix.time - prev.time) / 1000) {
         run.rejected++;
         continue;
       }

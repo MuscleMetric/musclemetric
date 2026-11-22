@@ -22,7 +22,7 @@ export function refreshRunActivity(run: Run, mode: "start" | "control" | "gps") 
   if (mode === "gps" && (!run.activityId || now - (run.activityUpdatedAt ?? 0) < 5000)) return;
   const paused = run.activeSince === null;
   const state: Activity.LiveActivityState = {
-    title: paused ? "Outdoor Run · Paused" : "Outdoor Run",
+    title: (run.workoutSet?.name ?? "Outdoor Run") + (paused ? " · Paused" : ""),
     subtitle: [(meters(run) / 1000).toFixed(2) + " km", cardioPace(currentPace(run, now)),
       run.accumulatedMs ? cardioTime(run.accumulatedMs / 1000) : "0:00"].join("\n"),
     // The run widget interprets this as the active clock's origin.
@@ -32,7 +32,7 @@ export function refreshRunActivity(run: Run, mode: "start" | "control" | "gps") 
     if (run.activityId) {
       Activity.updateActivity(run.activityId, state);
     } else if (mode === "start") {
-      run.activityId = Activity.startActivity(state, { deepLinkUrl: "features/cardio/outdoor-run" }) || undefined;
+      run.activityId = Activity.startActivity(state, { deepLinkUrl: run.workoutSet ? "features/workouts/live?outdoor=1" : "features/cardio/outdoor-run" }) || undefined;
     }
     run.activityUpdatedAt = now;
   } catch {

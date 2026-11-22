@@ -180,6 +180,8 @@ export default function ReviewWorkoutScreen() {
               const durationSeconds = durationSecondsFromDraft(draft);
               const completedAt = new Date();
 
+              const hasRoutes = draft.exercises.some(ex => ex.sets.some(set => set.gpsRecordingId));
+              if (hasRoutes) await (await import("@/features/cardio/syncRun")).prepareWorkoutRoutes(draft);
               const saved = await saveCompletedWorkoutFromLiveDraft({
                 clientSaveId,
                 draft,
@@ -190,6 +192,7 @@ export default function ReviewWorkoutScreen() {
                   draft.planWorkoutId ?? planWorkoutId ?? undefined,
               });
               completedWorkoutId = saved.workoutHistoryId;
+              if (hasRoutes) void import("@/features/cardio/syncRun").then(m => m.retryRunUploads(uid)).catch(() => undefined);
               // ✅ only clear AFTER successful save
               log("[resume-debug] save succeeded -> clearing…", {
                 uid,

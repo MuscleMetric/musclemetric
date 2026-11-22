@@ -6,6 +6,7 @@ import {
   Text,
   Alert,
   AppState,
+  Platform,
   Pressable,
 } from "react-native";
 import { useLocalSearchParams, router } from "expo-router";
@@ -25,6 +26,11 @@ import { openExercise } from "./state/mutators";
 import * as M from "./state/mutators";
 import * as S from "./state/selectors";
 
+import { OutdoorSetScreen } from "@/features/cardio/OutdoorSetScreen";
+import { applyRecordedSet, isOutdoorCardio } from "@/features/cardio/workoutOutdoor";
+import { listRuns, subscribeRuns } from "@/features/cardio/runStore";
+import { startRecorder } from "@/features/cardio/recorder";
+import type { Run } from "@/features/cardio/runMetrics";
 import { LiveHeader } from "./ui/LiveHeader";
 import { LiveWorkoutExerciseRow } from "./ui/LiveWorkoutExerciseRow";
 import { LiveStickyFooter } from "./ui/LiveStickyFooter";
@@ -163,6 +169,8 @@ export default function LiveWorkoutScreen() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [draft, setDraft] = useState<LiveWorkoutDraft | null>(null);
+  const [outdoor, setOutdoor] = useState<Run | null>(null);
+  const startingOutdoor = useRef(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // swap picker cache state (kept as you had it)
@@ -477,9 +485,51 @@ export default function LiveWorkoutScreen() {
   const historyLoadFailed = useExerciseHistory(draft, uid, update);
   useSessionTargets(draft, uid, update);
 
-  function openExerciseAt(index: number) {
-    update((d) => openExercise(d, index));
-    setSheetOpen(true);
+  const draftId = draft?.draftId;
+  useEffect(() => {
+    if (!uid || !draftId || Platform.OS !== "ios") return;
+    let alive = true;
+    let revision = 0;
+    const accept = (run: Run) => {
+      if (run.workoutSet?.draftId !== draftId || run.owner !== uid) return;
+      if (run.end === null) setOutdoor(run);
+      else {
+        update(d => applyRecordedSet(d, run));
+        setOutdoor(previous => previous?.id === run.id ? null : previous);
+      }
+    };
+    const unsubscribe = subscribeRuns((owner, id, run) => {
+      if (owner !== uid) return;
+      revision++;
+      if (run) accept(run);
+      else setOutdoor(previous => previous?.id === id ? null : previous);
+    });
+    const initial = revision;
+    void listRuns(uid).then(runs => {
+      if (alive && initial === revision) runs.forEach(accept);
+    }).catch(() => {});
+    return () => { alive = false; unsubscribe(); };
+  }, [uid, draftId, update]);
+
+  async function openExerciseAt(index: number) {
+    if (!draft || !uid) return;
+    const ex = draft.exercises[index];
+    update(d => openExercise(d, index));
+    if (Platform.OS !== "ios" || !isOutdoorCardio(ex.name, ex.type) || S.isExerciseComplete(ex)) {
+      setSheetOpen(true);
+      return;
+    }
+    if (startingOutdoor.current) return;
+    startingOutdoor.current = true;
+    try {
+      const run = await startRecorder(uid, undefined, { draftId: draft.draftId, exerciseId: ex.exerciseId,
+        name: ex.name, orderIndex: ex.orderIndex, setNumber: S.getNextSetNumber(ex) });
+      setOutdoor(run);
+    } catch (error) {
+      Alert.alert(ex.name, error instanceof Error ? error.message : "GPS could not start.", [
+        { text: "Close", style: "cancel" }, { text: "Log manually", onPress: () => setSheetOpen(true) },
+      ]);
+    } finally { startingOutdoor.current = false; }
   }
 
   async function discardSessionConfirmed() {
@@ -656,7 +706,7 @@ export default function LiveWorkoutScreen() {
                 }
                 index={idx + 1}
                 title={ex.name}
-                subtitle={subtitle}
+                subtitle={Platform.OS === "ios" && isOutdoorCardio(ex.name, ex.type) && !S.isExerciseStarted(ex) ? "Start GPS · Private route saved for 90 days" : subtitle}
                 tags={tags.length ? tags : undefined}
                 ex={ex}
                 onPress={() => openExerciseAt(indexToOpen)}
@@ -847,6 +897,7 @@ export default function LiveWorkoutScreen() {
         }}
       />
 
+      {outdoor?.workoutSet?.draftId === draft.draftId && outdoor.owner === uid && <OutdoorSetScreen key={outdoor.id} run={outdoor} />}
       <ExerciseEntryModal
         historyLoadFailed={historyLoadFailed}
         visible={sheetOpen}
