@@ -123,3 +123,15 @@ export function bestSegment(points: Point[], distance: number): number | null {
   }
   return Number.isFinite(best) ? best / 1000 : null;
 }
+
+export function personalBestsForRun(run: Run, history: Run[]) {
+  const earlier = history.filter(r => r.end !== null && r.start < run.start);
+  return benchmarks.flatMap(distance => {
+    const time = bestSegment(run.points, distance);
+    if (time === null || earlier.some(r => {
+      const previous = bestSegment(r.points, distance);
+      return previous !== null && previous <= time;
+    })) return [];
+    return [{ distance, time }];
+  });
+}

@@ -11,7 +11,7 @@ jest.mock("expo-task-manager", () => ({
 jest.mock("expo-location", () => ({
   hasServicesEnabledAsync: jest.fn(), requestForegroundPermissionsAsync: jest.fn(), requestBackgroundPermissionsAsync: jest.fn(),
   startLocationUpdatesAsync: jest.fn(), stopLocationUpdatesAsync: jest.fn(), hasStartedLocationUpdatesAsync: jest.fn(),
-  ActivityType: { Fitness: 1 }, Accuracy: { Best: 1 },
+  ActivityType: { Fitness: 1 }, Accuracy: { Highest: 1 },
 }));
 jest.mock("expo-crypto", () => ({ randomUUID: () => "stable-run-id" }));
 jest.mock("@react-native-async-storage/async-storage", () => ({ getItem: jest.fn(), setItem: jest.fn(), getAllKeys: jest.fn(), removeItem: jest.fn() }));

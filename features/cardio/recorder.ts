@@ -74,7 +74,7 @@ export async function startRecorder(owner: string, id?: string) {
     try {
       await setRecorder(run);
       await Location.startLocationUpdatesAsync(task, {
-        accuracy: Location.Accuracy.Best, distanceInterval: 5,
+        accuracy: Location.Accuracy.Highest, distanceInterval: 5,
         activityType: Location.ActivityType.Fitness, pausesUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: true,
       });

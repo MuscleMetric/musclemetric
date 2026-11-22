@@ -5,7 +5,8 @@ import { activeMs, type Run } from "./runMetrics";
 const prefix = "mm:gps:v1:";
 const pointer = "mm:gps:running";
 const keyFor = (owner: string, id: string) => prefix + owner + ":" + id;
-const listeners = new Set<() => void>();
+type RunListener = (owner: string, id: string, run: Run | null) => void;
+const listeners = new Set<RunListener>();
 let pending: Promise<unknown> = Promise.resolve();
 
 // Background deliveries and foreground controls must observe each other's writes.
@@ -14,7 +15,7 @@ export function serialize<T>(operation: () => Promise<T>): Promise<T> {
   pending = next.catch(() => undefined);
   return next;
 }
-export function subscribeRuns(listener: () => void) {
+export function subscribeRuns(listener: RunListener) {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }
@@ -46,7 +47,7 @@ export async function currentRecorder() {
 
 export async function writeRun(run: Run) {
   await Storage.setItem(keyFor(run.owner, run.id), JSON.stringify(run));
-  listeners.forEach(listener => listener());
+  listeners.forEach(listener => listener(run.owner, run.id, run));
 }
 
 export async function makeRun(owner: string): Promise<Run> {
@@ -70,6 +71,6 @@ export async function discardDraft(owner: string, id: string) {
     const run = await readRun(owner, id);
     if (run.activeSince !== null || run.end !== null) throw Error("Pause the run before discarding.");
     await Storage.removeItem(keyFor(owner, id));
-    listeners.forEach(listener => listener());
+    listeners.forEach(listener => listener(owner, id, null));
   });
 }

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, ScrollView, Text, View } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/authContext";
@@ -7,7 +7,7 @@ import { AuthRequiredState, Button, Screen, ScreenHeader } from "@/ui";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "./tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
 import { finishRecorder, pauseRecorder, RunActionError, startRecorder } from "@/features/cardio/recorder";
-import { activeMs, meters, splits, type Run } from "@/features/cardio/runMetrics";
+import { activeMs, legs, meters, personalBestsForRun, splits, type Run } from "@/features/cardio/runMetrics";
 import { discardDraft, listRuns, subscribeRuns } from "@/features/cardio/runStore";
 import { backupRoute, saveRunHistory } from "@/features/cardio/syncRun";
 import { restoreHistoryRun } from "@/features/cardio/restoreRun";
@@ -36,7 +36,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
-    let alive = true, sequence = 0;
+    let alive = true, sequence = 0, ready = false;
     const refresh = async () => {
       const ticket = ++sequence;
       try {
@@ -49,12 +49,20 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           setRemote(restored);
           if (!restored) setMessage("There is no private GPS backup for this workout.");
         }
+        ready = true;
         setLoaded(true);
       } catch {
         if (alive) setMessage("Your run data could not be opened. Check your connection if restoring a backup, then retry.");
       }
     };
-    const unsubscribe = subscribeRuns(() => { void refresh(); });
+    const unsubscribe = subscribeRuns((changedOwner, id, changed) => {
+      if (changedOwner !== owner) return;
+      if (!ready) { void refresh(); return; }
+      setRuns(previous => {
+        const remaining = previous.filter(r => r.id !== id);
+        return changed ? [changed, ...remaining].sort((a, b) => b.start - a.start) : remaining;
+      });
+    });
     void refresh();
     return () => { alive = false; unsubscribe(); };
   }, [owner, historyId, revision]);
@@ -63,6 +71,8 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const draft = runs.find(r => r.end === null);
   const run = historyId ? runs.find(r => r.historyId === historyId) ?? remote :
     selectedRun ?? (progress ? null : draft);
+  const highlights = useMemo(() => run?.end != null && runs.some(r => r.id === run.id)
+    ? personalBestsForRun(run, runs) : [], [run, runs]);
   const running = !!run && run.activeSince !== null;
   useEffect(() => {
     if (!running) return;
@@ -110,7 +120,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
         <Text style={style}>Active time {cardioTime(elapsed) === "—" ? "0:00" : cardioTime(elapsed)} · Pace {cardioPace(km ? elapsed / km : null)}</Text>
         {running && <Text style={muted}>{!last || last.leg !== run.leg || now - last.time > 30000 ? "Waiting for a reliable GPS fix. Check Precise Location and move into open sky." : "GPS signal received"}</Text>}
         {run.rejected > 0 && <Text style={muted}>{run.rejected} unreliable GPS samples excluded.</Text>}
-        {running && <Button title="Pause" disabled={busy} onPress={() => void action(() => pauseRecorder(owner, run.id), "Could not pause GPS. Check the recording status.")} />}
+        {running && <Button title="Pause or finish" disabled={busy} onPress={() => void action(() => pauseRecorder(owner, run.id), "Could not pause GPS. Check the recording status.")} />}
         {!running && !done && <>
           <Button title="Resume" disabled={busy} onPress={() => void action(() => startRecorder(owner, run.id), "Could not resume GPS. Check location settings.")} />
           <Text style={style}>Run type · required to finish</Text>
@@ -135,7 +145,11 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           <Text style={muted}>{new Date(run.start).toLocaleString()} · Elapsed {cardioTime(((run.end ?? run.start) - run.start) / 1000)}{run.effort ? " · RPE " + run.effort + "/10" : ""}</Text>
           <Text style={style}>{run.historyId ? "Saved to workout history" : "Saved on this iPhone · workout history pending"}</Text>
           {!run.historyId && <Button title="Retry workout history" disabled={busy} onPress={() => saveHistory(run)} />}
+          {highlights.map(pb => <Text key={pb.distance} style={{ color: colors.success, fontWeight: "600" }}>
+            GPS best on this iPhone · {pb.distance / 1000} km in {cardioTime(pb.time)}
+          </Text>)}
           <RouteMap key={run.id} points={run.points} />
+          {legs(run.points).length > 1 && <Text style={muted}>The route has separate sections where tracking paused or GPS signal was lost.</Text>}
           <Text style={{ ...style, fontWeight: "600" }}>GPS splits · active pace</Text>
           {splits(run).map((s, i) => <Text key={i} style={style}>{s.partial ? "Final " + (s.distance / 1000).toFixed(2) + " km" : "Kilometre " + (i + 1)} · {cardioTime(s.seconds)} · {cardioPace(s.seconds / (s.distance / 1000))}</Text>)}
           {run.routeSynced ? <Text style={muted}>Private route backed up</Text> : <Button variant="outline" title="Back up private route" disabled={busy} onPress={() => void action(() => backupRoute(owner, run.id), "Private backup is unavailable. The complete route and splits are saved on this iPhone.")} />}
@@ -143,7 +157,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
         </>}
       </>}
       {!!message && !done && <Button title="Open iPhone settings" variant="text" onPress={() => { void Linking.openSettings(); }} />}
-      {loaded && !historyId && !running && !draft && <RunInsights runs={runs} open={show} />}
+      {loaded && !historyId && !run && !draft && <RunInsights runs={runs} open={show} />}
     </ScrollView>
   </Screen>;
 }
