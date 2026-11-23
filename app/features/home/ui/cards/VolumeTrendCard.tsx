@@ -52,7 +52,7 @@ function badge(value: number | null) {
   return value == null ? "—" : (value > 0 ? "+" : "") + value + "%";
 }
 
-export function VolumeTrendCard({ card }: { card: any; summary?: any }) {
+export function VolumeTrendCard({ card, summary }: { card: any; summary?: any }) {
   const { colors, typography, layout } = useAppTheme();
   const { session } = useAuth();
   const owner = session?.user?.id;
@@ -90,7 +90,7 @@ export function VolumeTrendCard({ card }: { card: any; summary?: any }) {
       })));
     }).catch(() => { if (active) setDistanceError(true); });
     return () => { active = false; };
-  }, [owner, card?.value]);
+  }, [owner, summary?.server_time]);
 
   const distanceNow = distance?.[3]?.value ?? 0;
   const distanceDelta = distance ? delta(distanceNow, distance[2].value) : null;
