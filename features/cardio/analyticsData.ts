@@ -37,6 +37,7 @@ export async function loadAnalyticsRuns(owner: string, local: Run[] = []): Promi
   }
 
   const gpsHistoryIds = new Set<string>();
+  for (const run of completed.values()) if (run.historyId) gpsHistoryIds.add(run.historyId);
   for (const raw of recordings.data ?? []) {
     const row = raw as any;
     if (row.workout_history_id) gpsHistoryIds.add(row.workout_history_id);
