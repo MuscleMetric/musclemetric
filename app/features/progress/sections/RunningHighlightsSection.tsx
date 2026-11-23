@@ -6,7 +6,7 @@ import { useAppTheme } from "@/lib/useAppTheme";
 import { ProgressSection } from "../components/ProgressSection";
 import { cardioTime } from "../deep-analytics/utils/cardioFormat";
 import { loadAnalyticsRuns, type AnalyticsRun } from "@/features/cardio/analyticsData";
-import { measuredBest } from "@/features/cardio/RunInsights";
+import { measuredBest } from "@/features/cardio/analyticsMetrics";
 import { benchmarks } from "@/features/cardio/runMetrics";
 import { listRuns } from "@/features/cardio/runStore";
 
