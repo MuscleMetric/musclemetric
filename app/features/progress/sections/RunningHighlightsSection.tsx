@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useAuth } from "@/lib/authContext";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { ProgressSection } from "../components/ProgressSection";
@@ -23,7 +23,7 @@ export default function RunningHighlightsSection() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!owner) { setRuns([]); setLoading(false); return; }
     let active = true;
     setLoading(true);
@@ -35,7 +35,7 @@ export default function RunningHighlightsSection() {
       if (active) setLoading(false);
     });
     return () => { active = false; };
-  }, [owner]);
+  }, [owner]));
 
   const highlights = useMemo(() => benchmarks.map(distance => {
     const candidates = runs.flatMap(run => {
