@@ -1,211 +1,125 @@
-// app/features/home/cards/VolumeTrendCard.tsx
-import React, { useMemo } from "react";
-import { View, Text, StyleSheet } from "react-native";
-import Svg, { Path, Circle } from "react-native-svg";
+import React, { useEffect, useMemo, useState } from "react";
+import { Text, View, StyleSheet } from "react-native";
+import Svg, { Circle, Line, Path } from "react-native-svg";
 import { useAppTheme } from "../../../../../lib/useAppTheme";
+import { useAuth } from "../../../../../lib/authContext";
 import { Card, Pill } from "@/ui";
+import { loadWeeklyDistance } from "@/features/cardio/analyticsData";
 
 type SparkPoint = { label: string; value: number };
+const int = (n: number) => Math.round(n).toLocaleString("en-GB");
 
-function fmt(n: number) {
-  return Math.round(n).toLocaleString();
+function graph(values: number[]) {
+  const width = 320, height = 92, padX = 12, top = 10, bottom = 78;
+  const max = Math.max(1, ...values);
+  const points = values.map((value, i) => ({
+    x: padX + i * (width - 2 * padX) / Math.max(1, values.length - 1),
+    y: bottom - (Math.max(0, value) / max) * (bottom - top),
+  }));
+  return { points, path: points.map((p, i) => (i ? "L " : "M ") + p.x + " " + p.y).join(" ") };
 }
 
-function buildPath(points: { x: number; y: number }[]) {
-  if (points.length === 0) return "";
-  const [p0, ...rest] = points;
-  return `M ${p0.x} ${p0.y} ` + rest.map((p) => `L ${p.x} ${p.y}`).join(" ");
+function Trend({ data, color, empty }: { data: SparkPoint[]; color: string; empty: string }) {
+  const { colors } = useAppTheme();
+  if (!data.length) return <Text style={{ color: colors.textMuted, paddingVertical: 12 }}>{empty}</Text>;
+  const chart = graph(data.map(point => Number(point.value) || 0));
+  return <View>
+    <Svg width="100%" height={92} viewBox="0 0 320 92">
+      {[22, 50, 78].map(y => <Line key={y} x1={0} x2={320} y1={y} y2={y}
+        stroke={colors.border} strokeDasharray="4 5" />)}
+      <Path d={chart.path} stroke={color} strokeWidth={3} fill="none" strokeLinejoin="round" strokeLinecap="round" />
+      {chart.points.map((point, i) => <Circle key={i} cx={point.x} cy={point.y} r={4} fill={color} />)}
+    </Svg>
+    <View style={{ flexDirection: "row", justifyContent: "space-between", marginTop: -2 }}>
+      <Text style={{ color: colors.textMuted, fontSize: 11 }}>{data[0]?.label}</Text>
+      <Text style={{ color: colors.textMuted, fontSize: 11 }}>{data[data.length - 1]?.label}</Text>
+    </View>
+  </View>;
 }
 
-export function VolumeTrendCard({
-  card,
-  summary,
-}: {
-  card: any;
-  summary?: any;
-}) {
+function weekStarts() {
+  const monday = new Date();
+  monday.setUTCHours(0, 0, 0, 0);
+  monday.setUTCDate(monday.getUTCDate() - (monday.getUTCDay() + 6) % 7 - 21);
+  return Array.from({ length: 4 }, (_, i) => new Date(monday.getTime() + i * 7 * 86400000));
+}
+
+function delta(current: number, previous: number): number | null {
+  return previous > 0 ? Math.round((current - previous) / previous * 100) : null;
+}
+
+function badge(value: number | null) {
+  return value == null ? "—" : (value > 0 ? "+" : "") + value + "%";
+}
+
+export function VolumeTrendCard({ card }: { card: any; summary?: any }) {
   const { colors, typography, layout } = useAppTheme();
-  const styles = useMemo(
-    () => makeStyles(colors, typography, layout),
-    [colors, typography, layout]
-  );
+  const { session } = useAuth();
+  const owner = session?.user?.id;
+  const styles = useMemo(() => StyleSheet.create({
+    card: { padding: layout.space.lg, borderRadius: layout.radius.xl },
+    heading: { color: colors.text, fontSize: typography.size.h2, fontFamily: typography.fontFamily.bold },
+    title: { color: colors.text, fontSize: typography.size.sub, fontFamily: typography.fontFamily.bold },
+    muted: { color: colors.textMuted, fontSize: typography.size.meta },
+    value: { color: colors.text, fontFamily: typography.fontFamily.bold, fontSize: typography.size.h2 },
+  }), [colors, typography, layout]);
 
-  const label = String(card?.label ?? "Volume");
-  const value = Number(card?.value ?? 0);
-  const unit = String(card?.unit ?? "kg");
-  const delta = card?.delta_pct == null ? null : Number(card.delta_pct);
+  const weight: SparkPoint[] = Array.isArray(card?.sparkline) ?
+    card.sparkline.map((p: any) => ({ label: String(p.label ?? ""), value: Math.max(0, Number(p.value) || 0) })) : [];
+  const weightNow = Number(card?.value ?? 0);
+  const weightDelta = card?.delta_pct == null ? null : Number(card.delta_pct);
+  const [distance, setDistance] = useState<SparkPoint[] | null>(null);
+  const [distanceError, setDistanceError] = useState(false);
 
-  const deltaLabel =
-    delta == null ? "—" : delta >= 0 ? `+${delta}%` : `${delta}%`;
+  useEffect(() => {
+    if (!owner) { setDistance(null); return; }
+    const weeks = weekStarts();
+    let active = true;
+    setDistance(null);
+    setDistanceError(false);
+    void loadWeeklyDistance(owner, weeks[0].toISOString()).then(rows => {
+      if (!active) return;
+      const totals = [0, 0, 0, 0];
+      for (const row of rows) {
+        const week = Math.floor((row.date - weeks[0].getTime()) / (7 * 86400000));
+        if (week >= 0 && week < 4) totals[week] += row.km;
+      }
+      setDistance(weeks.map((week, i) => ({
+        label: week.toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }),
+        value: Number(totals[i].toFixed(2)),
+      })));
+    }).catch(() => { if (active) setDistanceError(true); });
+    return () => { active = false; };
+  }, [owner, card?.value]);
 
-  // Trend card: avoid "danger" red (feels harsh). Use warning for drops.
-  const pillTone = useMemo(() => {
-    if (delta == null) return "neutral";
-    if (delta >= 0) return "success";
-    return "warning";
-  }, [delta]);
+  const distanceNow = distance?.[3]?.value ?? 0;
+  const distanceDelta = distance ? delta(distanceNow, distance[2].value) : null;
+  return <Card style={styles.card}>
+    <View style={{ gap: layout.space.md }}>
+      <Text style={styles.heading}>Training volume</Text>
+      <Text style={styles.muted}>Weekly totals · Monday to Sunday · last 4 weeks</Text>
 
-  const spark: SparkPoint[] = Array.isArray(card?.sparkline)
-    ? card.sparkline
-    : [];
-
-  const chart = useMemo(() => {
-    const W = 164;
-    const H = 64;
-    const pad = 10;
-
-    if (spark.length < 2) {
-      return { W, H, d: "", last: null as null | { x: number; y: number } };
-    }
-
-    const vals = spark.map((p) => Number(p.value ?? 0));
-    const min = Math.min(...vals);
-    const max = Math.max(...vals);
-    const span = Math.max(1e-6, max - min);
-
-    const pts = spark.map((p, i) => {
-      const x = pad + (i * (W - pad * 2)) / Math.max(1, spark.length - 1);
-      const y = pad + (H - pad * 2) * (1 - (Number(p.value) - min) / span);
-      return { x, y };
-    });
-
-    const d = buildPath(pts);
-    const last = pts[pts.length - 1];
-
-    return { W, H, d, last };
-  }, [spark]);
-
-  const topLabel = "Mon–Sun weeks · this week vs last week";
-
-  // Stroke color: primary by default; if delta negative, shift to warning
-  const stroke = delta != null && delta < 0 ? colors.warning : colors.primary;
-
-  return (
-    <Card style={styles.card}>
-      <View style={{ gap: layout.space.sm }}>
-        <View style={styles.row}>
-          <Text style={styles.kicker}>{label.toUpperCase()}</Text>
-          <Pill label={deltaLabel} tone={pillTone as any} />
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={styles.title}>Weight moved</Text>
+          <Pill label={badge(weightDelta)} tone={weightDelta == null ? "neutral" : weightDelta >= 0 ? "success" : "warning"} />
         </View>
-
-        <Text style={styles.meta}>{topLabel}</Text>
-
-        <View style={styles.mainRow}>
-          <Text style={styles.big} numberOfLines={1}>
-            {fmt(value)}{" "}
-            <Text style={styles.unit} numberOfLines={1}>
-              {unit}
-            </Text>
-          </Text>
-
-          {spark.length >= 2 ? (
-            <View style={styles.sparkWrap}>
-              <Svg width={chart.W} height={chart.H}>
-                <Path
-                  d={chart.d}
-                  stroke={stroke}
-                  strokeWidth={2}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                {chart.last ? (
-                  <Circle
-                    cx={chart.last.x}
-                    cy={chart.last.y}
-                    r={3}
-                    fill={stroke}
-                  />
-                ) : null}
-              </Svg>
-
-              <View style={styles.axisRow}>
-                <Text style={styles.axisText} numberOfLines={1}>
-                  {spark[0]?.label ?? ""}
-                </Text>
-                <Text style={styles.axisText} numberOfLines={1}>
-                  {spark[spark.length - 1]?.label ?? ""}
-                </Text>
-              </View>
-            </View>
-          ) : null}
-        </View>
+        <Text style={styles.value}>{int(weightNow)} kg</Text>
+        <Trend data={weight} color={colors.primary} empty="No strength volume yet" />
       </View>
-    </Card>
-  );
+
+      <View style={{ borderTopWidth: StyleSheet.hairlineWidth, borderColor: colors.border }} />
+      <View style={{ gap: 8 }}>
+        <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
+          <Text style={styles.title}>Distance covered</Text>
+          {distance && <Pill label={badge(distanceDelta)} tone={distanceDelta == null ? "neutral" : distanceDelta >= 0 ? "success" : "warning"} />}
+        </View>
+        <Text style={styles.value}>{distance ? distanceNow.toFixed(2) + " km" : "—"}</Text>
+        {distanceError
+          ? <Text style={styles.muted}>Could not load distance history.</Text>
+          : distance ? <Trend data={distance} color={colors.success} empty="No distance yet" />
+            : <Text style={styles.muted}>Loading distance…</Text>}
+      </View>
+    </View>
+  </Card>;
 }
-
-const makeStyles = (colors: any, typography: any, layout: any) =>
-  StyleSheet.create({
-    card: {
-      padding: layout.space.lg,
-      borderRadius: layout.radius.xl,
-    },
-
-    row: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-    },
-
-    kicker: {
-      fontFamily: typography.fontFamily.bold,
-      fontSize: typography.size.meta,
-      letterSpacing: 1.2,
-      color: colors.textMuted,
-    },
-
-    meta: {
-      fontFamily: typography.fontFamily.semibold,
-      fontSize: typography.size.sub,
-      color: colors.textMuted,
-    },
-
-    mainRow: {
-      flexDirection: "row",
-      justifyContent: "space-between",
-      alignItems: "center",
-      gap: layout.space.md,
-    },
-
-    big: {
-      fontFamily: typography.fontFamily.bold,
-      fontSize: typography.size.hero,
-      lineHeight: typography.lineHeight.hero,
-      letterSpacing: -1.0,
-      color: colors.text,
-      flexShrink: 1,
-    },
-
-    unit: {
-      fontFamily: typography.fontFamily.bold,
-      fontSize: typography.size.h2,
-      color: colors.textMuted,
-    },
-
-    sparkWrap: {
-      width: 176,
-      paddingVertical: 10,
-      paddingHorizontal: 10,
-      borderRadius: layout.radius.lg,
-      borderWidth: StyleSheet.hairlineWidth,
-
-      // ✅ Use new semantic track tokens
-      backgroundColor: colors.trackBg,
-      borderColor: colors.trackBorder,
-    },
-
-    axisRow: {
-      marginTop: -2,
-      flexDirection: "row",
-      justifyContent: "space-between",
-      gap: layout.space.sm,
-    },
-
-    axisText: {
-      fontFamily: typography.fontFamily.semibold,
-      fontSize: typography.size.meta,
-      color: colors.textMuted,
-      maxWidth: 72,
-    },
-  });
