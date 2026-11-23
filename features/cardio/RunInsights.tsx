@@ -5,11 +5,11 @@ import { Button } from "@/ui";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "@/app/features/cardio/tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
-import { benchmarks, meters, runBest, type Run } from "./runMetrics";
+import { benchmarks, meters, type Run } from "./runMetrics";
+import { measuredBest, runGraphData } from "./analyticsMetrics";
 import { loadAnalyticsRuns, type AnalyticsRun } from "./analyticsData";
 
 type Metric = "distance" | "duration" | "pace";
-const DAY = 86400000;
 const LABELS: Record<Metric, string> = { distance: "Distance", duration: "Time", pace: "Avg pace" };
 const LABEL_DISTANCE: Record<number, string> = {
   1000: "1 km", 5000: "5 km", 10000: "10 km", 21097.5: "Half marathon", 42195: "Marathon",
@@ -24,25 +24,6 @@ const metricValue = (run: Run, metric: Metric) =>
 const metricDisplay = (run: Run, metric: Metric) =>
   metric === "distance" ? distanceKm(run).toFixed(2) + " km"
     : metric === "duration" ? cardioTime(seconds(run)) : cardioPace(pace(run));
-
-/** GPS subdistance or an actually completed, matching-distance logged run. Never project a PB. */
-export function measuredBest(run: AnalyticsRun, distance: number): number | null {
-  const gps = runBest(run, distance);
-  if (gps !== null && positive(gps)) return gps;
-  const travelled = meters(run);
-  // For a non-trace session, only a close match is an actual result.
-  if (run.points.length === 0 && Math.abs(travelled - distance) <= distance * 0.01 && positive(seconds(run))) {
-    return seconds(run);
-  }
-  return null;
-}
-
-export function runGraphData(runs: AnalyticsRun[], category: RunType | null, now = Date.now()) {
-  const cutoff = now - 90 * DAY;
-  return runs.filter(run => run.end !== null && run.start >= cutoff && run.start <= now &&
-    (!category || run.type === category) && positive(meters(run)) && positive(seconds(run)))
-    .sort((a, b) => a.start - b.start);
-}
 
 function RunTrendChart({
   runs, metric, selectedId, onSelect,
