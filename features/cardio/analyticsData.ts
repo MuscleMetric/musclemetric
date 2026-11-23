@@ -53,7 +53,7 @@ export async function loadAnalyticsRuns(owner: string, local: Run[] = []): Promi
       accumulatedMs: seconds * 1000, points: [], leg: 0, rejected: 0,
       type: validType(row.run_type), effort: null,
       historyId: row.workout_history_id ?? null, routeSynced: true,
-      summaryMeters: distance, sourceLabel: "gps",
+      summaryMeters: distance, sourceLabel: row.source === "manual" ? "logged" : "gps",
     });
   }
 
