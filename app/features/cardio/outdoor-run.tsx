@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Linking, ScrollView, Text, View } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useAuth } from "@/lib/authContext";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { AuthRequiredState, Button, Screen, ScreenHeader } from "@/ui";
@@ -88,11 +88,16 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
     try { await fn(); } catch (e) { setMessage(e instanceof RunActionError ? e.message : fallback); }
     finally { lock.current = false; setBusy(false); }
   };
-  const show = useCallback((id: string) => {
+  const show = useCallback((id: string, savedHistoryId?: string | null) => {
+    if (!runs.some(item => item.id === id) && savedHistoryId) {
+      router.push({ pathname: "/features/progress/screens/historyDetail",
+        params: { workoutHistoryId: savedHistoryId } });
+      return;
+    }
     setSelected(id);
     setMessage("");
     scroll.current?.scrollTo({ y: 0, animated: true });
-  }, []);
+  }, [runs]);
   const style = { color: colors.text };
   const muted = { color: colors.textMuted };
   const done = run?.end != null;
@@ -158,7 +163,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
         </>}
       </>}
       {!!message && !done && <Button title="Open iPhone settings" variant="text" onPress={() => { void Linking.openSettings(); }} />}
-      {loaded && !historyId && !run && (!draft || progress) && <RunInsights runs={runs} open={show} />}
+      {loaded && !historyId && !run && (!draft || progress) && <RunInsights runs={runs} owner={owner} open={show} />}
     </ScrollView>
   </Screen>;
 }
