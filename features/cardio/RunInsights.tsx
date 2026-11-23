@@ -84,7 +84,7 @@ function RunTrendChart({
 }
 
 export function RunInsights({ runs, owner, open }: {
-  runs: Run[]; owner: string; open: (id: string) => void;
+  runs: Run[]; owner: string; open: (id: string, historyId?: string | null) => void;
 }) {
   const { colors } = useAppTheme();
   const [allRuns, setAllRuns] = useState<AnalyticsRun[]>(runs);
@@ -122,7 +122,7 @@ export function RunInsights({ runs, owner, open }: {
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>GPS-measured segments and matching completed sessions · all time</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10 }}>
         {records.map(({ distance, best }) =>
-          <Pressable key={distance} onPress={() => best && open(best.run.id)}
+          <Pressable key={distance} onPress={() => best && open(best.run.id, best.run.historyId)}
             accessibilityRole="button" disabled={!best}
             style={{ padding: 13, borderRadius: 14, backgroundColor: colors.trackBg, minWidth: 128, gap: 5 }}>
             <Text style={{ color: colors.textMuted, fontSize: 12 }}>{LABEL_DISTANCE[distance]}</Text>
@@ -151,7 +151,7 @@ export function RunInsights({ runs, owner, open }: {
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>Latest run · {metric === "pace" ? "lower min/km is faster" : LABELS[metric].toLowerCase()}</Text>
       <RunTrendChart runs={trend} metric={metric} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
-      {selected && <Pressable onPress={() => open(selected.id)} accessibilityRole="button"
+      {selected && <Pressable onPress={() => open(selected.id, selected.historyId)} accessibilityRole="button"
         style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 12 }}>
         <Text style={{ color: colors.text, fontWeight: "700" }}>{shortDate(selected.start)} · {selected.type ? RUN_TYPE_LABELS[selected.type] : "Uncategorised run"}</Text>
         <Text style={{ color: colors.textMuted, marginTop: 3 }}>
