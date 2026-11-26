@@ -46,14 +46,8 @@ export default function RunningHighlightsSection() {
     return { distance, best };
   }), [runs]);
 
-  const openRun = (run: AnalyticsRun) => {
-    if (run.historyId) {
-      router.push({ pathname: "/features/progress/screens/historyDetail",
-        params: { workoutHistoryId: run.historyId } });
-    } else {
-      router.push({ pathname: "/features/cardio/outdoor-run", params: { view: "progress" } });
-    }
-  };
+  const openRunningProgress = () =>
+    router.push({ pathname: "/features/cardio/outdoor-run", params: { view: "progress" } });
 
   return <ProgressSection>
     <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
@@ -61,8 +55,7 @@ export default function RunningHighlightsSection() {
         <Text style={{ color: colors.text, fontWeight: "900", fontSize: 18 }}>Running highlights</Text>
         <Text style={{ color: colors.textMuted, marginTop: 2, fontSize: 13 }}>Your best measured times</Text>
       </View>
-      <Pressable accessibilityRole="button" onPress={() =>
-        router.push({ pathname: "/features/cardio/outdoor-run", params: { view: "progress" } })}>
+      <Pressable accessibilityRole="button" onPress={openRunningProgress}>
         <Text style={{ color: colors.primary, fontWeight: "700" }}>View all ›</Text>
       </Pressable>
     </View>
@@ -71,9 +64,9 @@ export default function RunningHighlightsSection() {
     {!loading && !error && <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
       {highlights.map(({ distance, best }) =>
-        <Pressable key={distance} accessibilityRole="button" disabled={!best}
+        <Pressable key={distance} accessibilityRole="button"
           accessibilityLabel={names[distance] + (best ? " personal best " + cardioTime(best.seconds) : " no result yet")}
-          onPress={() => best && openRun(best.run)}
+          onPress={openRunningProgress}
           style={{ width: 190, backgroundColor: colors.surface, borderRadius: 22, padding: 16,
             borderWidth: 1, borderColor: colors.border, gap: 8 }}>
           <Text style={{ fontWeight: "900", color: colors.text, fontSize: 16 }}>{names[distance]}</Text>
@@ -85,7 +78,7 @@ export default function RunningHighlightsSection() {
               : "No completed result"}
           </Text>
           <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-            {best ? (best.run.sourceLabel === "logged" ? "Logged result" : "GPS result") + " · Open workout ›" : "Keep logging runs"}
+            {best ? (best.run.sourceLabel === "logged" ? "Logged result" : "GPS result") + " · Running progress ›" : "Running progress ›"}
           </Text>
         </Pressable>)}
     </ScrollView>}
