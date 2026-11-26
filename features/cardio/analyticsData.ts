@@ -23,7 +23,7 @@ export async function loadAnalyticsRuns(owner: string, local: Run[] = []): Promi
       .eq("user_id", owner).eq("status", "completed")
       .order("started_at", { ascending: false }).limit(1000),
     supabase.from("workout_history")
-      .select("id,completed_at,workout_exercise_history(id,exercises(name,type),workout_set_history(id,distance,time_seconds))")
+      .select("id,completed_at,workout_exercise_history(id,run_type,exercises(name,type),workout_set_history(id,distance,time_seconds))")
       .eq("user_id", owner).order("completed_at", { ascending: false }).limit(1000),
   ]);
   if (recordings.error) throw recordings.error;
@@ -76,7 +76,7 @@ export async function loadAnalyticsRuns(owner: string, local: Run[] = []): Promi
       completed.set(id, {
         version: 1, id, owner, start: date - duration * 1000, end: date,
         activeSince: null, accumulatedMs: duration * 1000, points: [],
-        summaryMeters: distanceKm * 1000, leg: 0, rejected: 0, type: null,
+        summaryMeters: distanceKm * 1000, leg: 0, rejected: 0, type: validType(exercise.run_type),
         effort: null, historyId: parent.id, routeSynced: false, sourceLabel: "logged",
       });
     }
