@@ -46,7 +46,8 @@ function RunTrendChart({
   const last = first + count * step;
   const y = (value: number) => top + (bottom - top) *
     (metric === "pace" ? value - first : last - value) / (last - first);
-  const x = (date: number) => left + (right - left) * Math.min(1, Math.max(0, (now - date) / (90 * DAY_MS)));
+  const windowStart = now - 90 * DAY_MS;
+  const x = (date: number) => left + (right - left) * Math.min(1, Math.max(0, (date - windowStart) / (now - windowStart)));
   const tickLabel = (value: number) => metric === "pace" ? cardioTime(value) : String(Number(value.toFixed(2)));
   const path = runs.map((run, i) => (i ? "L " : "M ") + x(run.start) + " " + y(values[i])).join(" ");
   return <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
@@ -64,8 +65,8 @@ function RunTrendChart({
       {runs.map((run, i) => <Circle key={run.id} cx={x(run.start)} cy={y(values[i])}
         r={run.id === selectedId ? 6 : 4} fill={run.id === selectedId ? colors.success : colors.primary}
         onPress={() => onSelect(run.id)} />)}
-      {[0, 45, 90].map(days => <SvgText key={days} x={x(now - days * DAY_MS)} y={237}
-        textAnchor={days === 0 ? "start" : days === 90 ? "end" : "middle"}
+      {[90, 45, 0].map(days => <SvgText key={days} x={x(now - days * DAY_MS)} y={237}
+        textAnchor={days === 90 ? "start" : days === 0 ? "end" : "middle"}
         fontSize={11} fill={colors.textMuted}>{days === 0 ? "Today" : shortDate(now - days * DAY_MS)}</SvgText>)}
     </Svg>}
   </View>;
