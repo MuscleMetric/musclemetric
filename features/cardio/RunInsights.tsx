@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
-import Svg, { Circle, Line, Path } from "react-native-svg";
+import Svg, { Circle, Line, Path, Text as SvgText } from "react-native-svg";
 import { Button } from "@/ui";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "@/app/features/cardio/tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
 import { benchmarks, meters, type Run } from "./runMetrics";
-import { measuredBest, runGraphData } from "./analyticsMetrics";
+import { DAY_MS, measuredBest, runGraphData } from "./analyticsMetrics";
 import { loadAnalyticsRuns, type AnalyticsRun } from "./analyticsData";
 
 type Metric = "distance" | "duration" | "pace";
@@ -15,7 +15,6 @@ const LABEL_DISTANCE: Record<number, string> = {
   1000: "1 km", 5000: "5 km", 10000: "10 km", 21097.5: "Half marathon", 42195: "Marathon",
 };
 const shortDate = (ms: number) => new Date(ms).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-const positive = (n: number) => Number.isFinite(n) && n > 0;
 const distanceKm = (run: Run) => meters(run) / 1000;
 const seconds = (run: Run) => run.accumulatedMs / 1000;
 const pace = (run: Run) => seconds(run) / distanceKm(run);
@@ -29,39 +28,47 @@ function RunTrendChart({
   runs, metric, selectedId, onSelect,
 }: { runs: AnalyticsRun[]; metric: Metric; selectedId: string | null; onSelect: (id: string) => void }) {
   const { colors } = useAppTheme();
+  const [width, setWidth] = useState(0);
   if (!runs.length) {
     return <Text style={{ color: colors.textMuted, paddingVertical: 16 }}>No completed runs of this type in the past 90 days.</Text>;
   }
-  const width = Math.max(320, runs.length * 44 + 32);
-  const height = 152;
-  const top = 16, bottom = 128;
+  const now = Date.now();
+  const left = 48, right = Math.max(left + 1, width - 10);
+  const top = 14, bottom = 214;
   const values = runs.map(run => metricValue(run, metric));
-  const min = Math.min(...values), max = Math.max(...values);
-  const spread = Math.max(max - min, 0.01);
-  const points = values.map((value, index) => ({
-    x: 16 + (index * (width - 32)) / Math.max(1, runs.length - 1),
-    y: top + (metric === "pace" ? (value - min) / spread : (max - value) / spread) * (bottom - top),
-  }));
-  const path = points.map((p, i) => (i ? "L " : "M ") + p.x + " " + p.y).join(" ");
-  return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} accessibilityLabel="Run progress chart">
-      <View style={{ width }}>
-        <Svg width={width} height={height}>
-          {[top, (top + bottom) / 2, bottom].map(y =>
-            <Line key={y} x1={0} y1={y} x2={width} y2={y} stroke={colors.border} strokeDasharray="4 5" />)}
-          <Path d={path} fill="none" stroke={colors.primary} strokeWidth={2.5} strokeLinejoin="round" />
-          {points.map((p, i) =>
-            <Circle key={runs[i].id} cx={p.x} cy={p.y} r={selectedId === runs[i].id ? 7 : 5}
-              fill={selectedId === runs[i].id ? colors.success : colors.primary}
-              onPress={() => onSelect(runs[i].id)} />)}
-        </Svg>
-        <View style={{ flexDirection: "row", justifyContent: "space-between", paddingHorizontal: 12 }}>
-          <Text style={{ color: colors.textMuted, fontSize: 11 }}>{shortDate(runs[0].start)}</Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11 }}>{shortDate(runs[runs.length - 1].start)}</Text>
-        </View>
-      </View>
-    </ScrollView>
-  );
+  const low = Math.min(...values), high = Math.max(...values);
+  const precision = metric === "distance" ? 0.01 : metric === "duration" ? 0.1 : 1;
+  const roughStep = Math.max((high - low) / 4, precision);
+  const magnitude = 10 ** Math.floor(Math.log10(roughStep));
+  const step = ([1, 2, 5, 10].find(n => n * magnitude >= roughStep) ?? 10) * magnitude;
+  const first = Math.max(0, Math.floor(low / step) - (low === high ? 1 : 0)) * step;
+  const count = Math.max(2, Math.ceil((high - first) / step));
+  const last = first + count * step;
+  const y = (value: number) => top + (bottom - top) *
+    (metric === "pace" ? value - first : last - value) / (last - first);
+  const x = (date: number) => left + (right - left) * Math.min(1, Math.max(0, (now - date) / (90 * DAY_MS)));
+  const tickLabel = (value: number) => metric === "pace" ? cardioTime(value) : String(Number(value.toFixed(2)));
+  const path = runs.map((run, i) => (i ? "L " : "M ") + x(run.start) + " " + y(values[i])).join(" ");
+  return <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
+    <Text style={{ color: colors.textMuted }}>{metric === "pace" ? "Average pace (min/km) · faster at the top" :
+      metric === "duration" ? "Active time (minutes)" : "Distance (km)"}</Text>
+    {width > 0 && <Svg width={width} height={246} accessibilityLabel="Run trend over the last 90 days">
+      {Array.from({ length: count + 1 }, (_, i) => {
+        const value = first + i * step;
+        return <React.Fragment key={i}>
+          <Line x1={left} x2={right} y1={y(value)} y2={y(value)} stroke={colors.border} strokeDasharray="4 5" />
+          <SvgText x={left - 6} y={y(value) + 4} textAnchor="end" fontSize={11} fill={colors.textMuted}>{tickLabel(value)}</SvgText>
+        </React.Fragment>;
+      })}
+      <Path d={path} fill="none" stroke={colors.primary} strokeWidth={2.5} strokeLinejoin="round" />
+      {runs.map((run, i) => <Circle key={run.id} cx={x(run.start)} cy={y(values[i])}
+        r={run.id === selectedId ? 6 : 4} fill={run.id === selectedId ? colors.success : colors.primary}
+        onPress={() => onSelect(run.id)} />)}
+      {[0, 45, 90].map(days => <SvgText key={days} x={x(now - days * DAY_MS)} y={237}
+        textAnchor={days === 0 ? "start" : days === 90 ? "end" : "middle"}
+        fontSize={11} fill={colors.textMuted}>{days === 0 ? "Today" : shortDate(now - days * DAY_MS)}</SvgText>)}
+    </Svg>}
+  </View>;
 }
 
 export function RunInsights({ runs, owner, open }: {
@@ -83,7 +90,10 @@ export function RunInsights({ runs, owner, open }: {
     return () => { active = false; };
   }, [owner, runs]);
 
-  const trend = useMemo(() => runGraphData(allRuns, type), [allRuns, type]);
+  const recent = useMemo(() => runGraphData(allRuns, null), [allRuns]);
+  const usedTypes = RUN_TYPES.filter(option => recent.some(run => run.type === option));
+  const activeType = type && usedTypes.includes(type) ? type : null;
+  const trend = activeType ? recent.filter(run => run.type === activeType) : recent;
   const selected = trend.find(run => run.id === selectedId) ?? trend[trend.length - 1];
   const records = useMemo(() => benchmarks.map(distance => {
     const candidates = allRuns.flatMap(run => {
@@ -116,12 +126,13 @@ export function RunInsights({ runs, owner, open }: {
     <View style={panel}>
       <Text style={heading}>Progress by run type</Text>
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>Every completed run · rolling 90 days</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-        {[null, ...RUN_TYPES].map(t =>
+      <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
+        {[null, ...usedTypes].map(t =>
           <Button key={t ?? "all"} title={t ? RUN_TYPE_LABELS[t] : "All"}
-            fullWidth={false} variant={type === t ? "primary" : "outline"}
+            fullWidth={false} variant={activeType === t ? "primary" : "outline"}
             onPress={() => { setType(t); setSelectedId(null); }} />)}
-      </ScrollView>
+      </View>
+      <RunTrendChart runs={trend} metric={metric} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
       <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
         {(["distance", "duration", "pace"] as Metric[]).map(option =>
           <Button key={option} title={LABELS[option]} fullWidth={false}
@@ -131,7 +142,7 @@ export function RunInsights({ runs, owner, open }: {
         {latest ? metricDisplay(latest, metric) : "—"}
       </Text>
       <Text style={{ color: colors.textMuted, fontSize: 12 }}>Latest run · {metric === "pace" ? "lower min/km is faster" : LABELS[metric].toLowerCase()}</Text>
-      <RunTrendChart runs={trend} metric={metric} selectedId={selected?.id ?? null} onSelect={setSelectedId} />
+
       {selected && <Pressable onPress={() => open(selected.id, selected.historyId)} accessibilityRole="button"
         style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 12 }}>
         <Text style={{ color: colors.text, fontWeight: "700" }}>{shortDate(selected.start)} · {selected.type ? RUN_TYPE_LABELS[selected.type] : "Uncategorised run"}</Text>
