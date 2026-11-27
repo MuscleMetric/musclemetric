@@ -73,8 +73,8 @@ export function appendFixes(run: Run, fixes: Fix[], receivedAt: number) {
   }
 }
 
-export function legs(points: Point[]) {
-  const result: Point[][] = [];
+export function legs<T extends { leg: number }>(points: T[]) {
+  const result: T[][] = [];
   for (const point of points) {
     if (result[result.length - 1]?.[0].leg !== point.leg) result.push([]);
     result[result.length - 1].push(point);

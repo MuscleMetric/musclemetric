@@ -19,7 +19,11 @@ export function workoutSummary(snapshot: WorkoutSnapshot | null): SummaryStat[] 
   const cardioSeconds = toNumber(snapshot?.cardio_duration_seconds);
   const time = { label: 'TIME', value: duration(cardioSeconds > 0 ? cardioSeconds : toNumber(snapshot?.duration_seconds)) };
   const exercises = { label: 'EXERCISES', value: String(Math.max(0, toNumber(snapshot?.exercises_count))) };
-  if (snapshot?.workout_kind === 'cardio') return [distance, time, exercises];
+  if (snapshot?.workout_kind === 'cardio') {
+    const seconds = cardioSeconds > 0 ? cardioSeconds : toNumber(snapshot.duration_seconds);
+    const pace = seconds > 0 && distanceKm > 0 ? duration(seconds / distanceKm) : '—';
+    return [time, distance, { label: 'PACE', value: pace, unit: pace === '—' ? undefined : '/km' }];
+  }
   if (snapshot?.workout_kind === 'mixed') return [volume, distance, time];
   // Old backend responses and strength workouts retain the familiar stats.
   return [volume, { label: 'SETS', value: String(Math.max(0, toNumber(snapshot?.sets_count))) }, exercises];

@@ -21,7 +21,7 @@ import { FeedList } from "./feed/FeedList";
 import type { FeedRow } from "./feed/types";
 
 import { PostModal } from "./feed/modals/PostModal";
-import type { CommentRow, WorkoutDetailsPayload } from "./feed/modals/types";
+import { fetchComments, fetchWorkoutDetails, saveComment } from "./feed/modals/postData";
 
 import { log } from "@/lib/logger";
 
@@ -123,26 +123,6 @@ export default function SocialScreen() {
     setSelectedPost(null);
   }, []);
 
-  const fetchComments = useCallback(
-    async (postId: string): Promise<CommentRow[]> => {
-      const res = await supabase.rpc("get_post_comments", {
-        p_post_id: postId,
-        p_limit: 50,
-      });
-
-      log("get_post_comments raw response", res);
-
-      if (res.error) {
-        log("get_post_comments error", res.error);
-        throw res.error;
-      }
-
-      log("get_post_comments data", res.data);
-      return (res.data ?? []) as CommentRow[];
-    },
-    [],
-  );
-
   const bumpCommentCount = useCallback((postId: string, delta: number) => {
     setRows((prev) =>
       prev.map((r) =>
@@ -167,36 +147,11 @@ export default function SocialScreen() {
 
   const addComment = useCallback(
     async (postId: string, body: string) => {
-      const res = await supabase.rpc("add_post_comment", {
-        p_post_id: postId,
-        p_body: body,
-      });
-
-      if (res.error) throw res.error;
+      await saveComment(postId, body);
 
       bumpCommentCount(postId, +1);
     },
     [bumpCommentCount],
-  );
-
-  const fetchWorkoutDetails = useCallback(
-    async (postId: string): Promise<WorkoutDetailsPayload | null> => {
-      const res = await supabase.rpc("get_post_workout_details", {
-        p_post_id: postId,
-      });
-
-      if (res.error) {
-        log("get_post_workout_details error:", res.error);
-        return null;
-      }
-
-      const row = Array.isArray(res.data)
-        ? (res.data[0] as WorkoutDetailsPayload | undefined)
-        : undefined;
-
-      return row ?? null;
-    },
-    [],
   );
 
   const applyCursorFrom = useCallback(

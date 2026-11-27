@@ -3,7 +3,7 @@ import { View } from "react-native";
 import MapView, { Polyline, type Region } from "react-native-maps";
 import { legs, type Point } from "./runMetrics";
 
-function routeRegion(points: Point[]): Region {
+function routeRegion(points: Pick<Point, "latitude" | "longitude" | "leg">[]): Region {
   const origin = points[0].longitude;
   let north = -90, south = 90, east = -180, west = 180;
   for (const p of points) {
@@ -17,7 +17,7 @@ function routeRegion(points: Point[]): Region {
   };
 }
 
-function ZoomableRoute({ region, points }: { region: Region; points: Point[] }) {
+function ZoomableRoute({ region, points }: { region: Region; points: Pick<Point, "latitude" | "longitude" | "leg">[] }) {
   const paths = useMemo(() => legs(points), [points]);
   const map = useRef<MapView>(null);
   const [limit, setLimit] = useState<number>();
@@ -38,12 +38,12 @@ function ZoomableRoute({ region, points }: { region: Region; points: Point[] }) 
     initialRegion={region} onMapReady={measureOverview} onRegionChangeComplete={measureOverview}
     zoomEnabled={limit !== undefined} cameraZoomRange={limit ? { maxCenterCoordinateDistance: limit } : undefined}
     scrollEnabled={false} rotateEnabled={false} pitchEnabled={false}>
-    {paths.filter(path => path.length > 1).map(path => <Polyline key={path[0].time}
+    {paths.filter(path => path.length > 1).map(path => <Polyline key={path[0].leg}
       coordinates={path.map(({ latitude, longitude }) => ({ latitude, longitude }))} strokeWidth={4} strokeColor="#2563EB" />)}
   </MapView>;
 }
 
-export default function RouteMap({ points }: { points: Point[] }) {
+export default function RouteMap({ points }: { points: Pick<Point, "latitude" | "longitude" | "leg">[] }) {
   const [width, setWidth] = useState(0);
   const region = useMemo(() => points.length >= 2 ? routeRegion(points) : null, [points]);
   if (!region) return null;
