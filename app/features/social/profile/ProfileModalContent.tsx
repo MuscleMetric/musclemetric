@@ -13,6 +13,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { supabase } from "@/lib/supabase";
 
+import { PostModal } from "../feed/modals/PostModal";
+import { fetchComments, fetchWorkoutDetails, saveComment } from "../feed/modals/postData";
 import { WorkoutPostCard } from "@/app/features/social/feed/posts/WorkoutPostCard";
 import { PrPostCard } from "@/app/features/social/feed/posts/PrPostCard";
 import type { FeedRow } from "@/app/features/social/feed/types";
@@ -83,6 +85,7 @@ export default function ProfileModalContent({
   profileId,
   onClose,
 }: ProfileModalContentProps) {
+  const [selectedPost, setSelectedPost] = useState<FeedRow | null>(null);
   const { colors, typography, layout } = useAppTheme();
 
   const styles = useMemo(
@@ -561,6 +564,7 @@ export default function ProfileModalContent({
             if (item.post_type === "workout") {
               return (
                 <WorkoutPostCard
+                  onOpenPost={setSelectedPost}
                   item={feedItem}
                   showHeader={true}
                   showActions={false}
@@ -593,6 +597,8 @@ export default function ProfileModalContent({
           }}
           ListFooterComponent={<View style={{ height: layout.space.xxl }} />}
         />
+        {selectedPost && <PostModal visible post={selectedPost} onClose={() => setSelectedPost(null)}
+          fetchComments={fetchComments} fetchWorkoutDetails={fetchWorkoutDetails} addComment={saveComment} />}
       </View>
     </SafeAreaView>
   );

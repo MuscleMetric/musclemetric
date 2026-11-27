@@ -54,6 +54,10 @@
       <true />
     </dict>
 
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>MuscleMetric uses your precise location to measure distance and record the route of an outdoor run you start.</string>
+    <key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+    <string>Allow MuscleMetric to keep measuring your run when your iPhone is locked or you switch apps.</string>
     <key>NSMotionUsageDescription</key>
     <string>MuscleMetric uses motion data to support activity and workout tracking features.</string>
     <key>NSPhotoLibraryAddUsageDescription</key>
@@ -66,6 +70,7 @@
     <key>UIBackgroundModes</key>
     <array>
       <string>fetch</string>
+      <string>location</string>
     </array>
     <key>UILaunchStoryboardName</key>
     <string>SplashScreen</string>

@@ -43,7 +43,16 @@
     "plugins": [
       "expo-notifications",
       "expo-apple-authentication",
-      "expo-web-browser"
+      "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow MuscleMetric to keep measuring your run when your iPhone is locked or you switch apps.",
+          "locationWhenInUsePermission": "MuscleMetric uses your precise location to measure distance and record the route of an outdoor run you start.",
+          "locationAlwaysPermission": "Allow MuscleMetric to keep measuring your run when your iPhone is locked or you switch apps.",
+          "isIosBackgroundLocationEnabled": true
+        }
+      ]
     ],
     "android": {
       "package": "com.musclemetric.app"

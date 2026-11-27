@@ -4,6 +4,15 @@ import { fireEvent, render } from "@testing-library/react-native";
 import { FeedItem } from "@/app/features/social/feed/FeedItem";
 import type { FeedRow } from "@/app/features/social/feed/types";
 
+const mockRoute = { drawing: [[[0, 0], [20, 10]]], meters: 2242.11, active: 1642 };
+jest.mock("@/features/cardio/PostRoute", () => ({
+  usePostRoutes: (id: string) => ({ routes: id === "gps-post" ? [mockRoute] : [] }),
+  PostMap: () => {
+    const { Text } = require("react-native");
+    return <Text>Recorded workout route</Text>;
+  },
+}));
+
 jest.mock("@/lib/useAppTheme", () => ({
   useAppTheme: () => ({
     colors: {
@@ -177,4 +186,15 @@ it('renders a cardio post with distance and time rather than lifting volume', ()
   expect(screen.getByText('25:00')).toBeTruthy();
   expect(screen.queryByText('VOLUME')).toBeNull();
   expect(screen.queryByText('kg')).toBeNull();
+});
+
+it("opens the GPS workout post from the map cover with time, distance and active pace", () => {
+  const post = { ...makePost("workout"), post_id: "gps-post",
+    workout_snapshot: { ...basePost.workout_snapshot!, sets_count: 1, workout_kind: "cardio" as const } };
+  const open = jest.fn();
+  const screen = render(<FeedItem item={post} onToggleLike={jest.fn()} onOpenComments={open} />);
+  for (const value of ["27:22", "2.24", "12:12", "PACE"]) expect(screen.getByText(value)).toBeTruthy();
+  expect(screen.queryByText("EXERCISES")).toBeNull();
+  fireEvent.press(screen.getByText("Recorded workout route"));
+  expect(open).toHaveBeenCalledWith(post);
 });

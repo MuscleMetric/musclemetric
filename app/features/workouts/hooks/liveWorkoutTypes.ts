@@ -71,6 +71,7 @@ export type WorkoutLoadPayload = {
 };
 
 export type LiveSetDraft = {
+  gpsRecordingId?: string;
   setNumber: number;
   dropIndex: number; // keep 0 for now, but future-proof
   reps: number | null;

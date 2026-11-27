@@ -1,4 +1,7 @@
 import "react-native-url-polyfill/auto";
+import { pruneDeviceRoutes, subscribeRuns } from "@/features/cardio/runStore";
+import { retryRunUploads } from "@/features/cardio/syncRun";
+import { reconcileRecorder } from "@/features/cardio/recorder";
 import { useEffect } from "react";
 import {
   Stack,
@@ -8,7 +11,7 @@ import {
   usePathname,
 } from "expo-router";
 import { ThemeProvider } from "@react-navigation/native";
-import { useColorScheme, View, StyleSheet, Platform } from "react-native";
+import { useColorScheme, View, StyleSheet, Platform, AppState } from "react-native";
 import { LightTheme, DarkTheme } from "./theme";
 import { StatusBar } from "expo-status-bar";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
@@ -60,6 +63,38 @@ function RootNavigator() {
   const navState = useRootNavigationState();
   const navReady = !!navState?.key;
   const pathname = usePathname();
+  const owner = session?.user.id ?? null;
+  useEffect(() => {
+    if (loading || Platform.OS !== "ios") return;
+    const reconcile = () => { void reconcileRecorder(owner).catch(() => undefined); };
+    let retryNeeded = true;
+    let retrying = false;
+    const sync = async () => {
+      if (!owner || retrying || !retryNeeded) return;
+      retrying = true;
+      retryNeeded = false;
+      try {
+        if (await retryRunUploads(owner)) retryNeeded = true;
+      } catch { retryNeeded = true; }
+      finally { retrying = false; }
+    };
+    const unsubscribe = subscribeRuns((changedOwner, _id, run) => {
+      if (changedOwner === owner && run?.autoBackup && run.end !== null && !run.routeSynced) retryNeeded = true;
+    });
+    const maintain = () => {
+      reconcile();
+      retryNeeded = true;
+      void pruneDeviceRoutes().catch(() => undefined).then(sync);
+    };
+    maintain();
+    const retry = setInterval(() => {
+      if (AppState.currentState === "active") void sync();
+    }, 60000);
+    const subscription = AppState.addEventListener("change", state => {
+      if (state === "active") maintain();
+    });
+    return () => { unsubscribe(); clearInterval(retry); subscription.remove(); };
+  }, [loading, owner]);
 
   useEffect(() => {
     if (!navReady) return;

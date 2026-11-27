@@ -21,7 +21,7 @@ import { CommentComposer } from "./CommentComposer";
 
 // ✅ reuse existing post cards for preview
 import { PrPostCard } from "../posts/PrPostCard";
-import { WorkoutPostCard } from "../posts/WorkoutPostCard";
+import { PostRouteDetails } from "@/features/cardio/PostRoute";
 import { WorkoutDetails } from "./WorkoutDetails";
 
 import { log } from "@/lib/logger";
@@ -252,7 +252,10 @@ export function PostModal({
   const renderPostPreview = () => {
     if (post.post_type === "workout") {
       return (
-        <WorkoutDetails loading={loadingWorkoutDetails} data={workoutDetails} />
+        <PostRouteDetails key={post.post_id} postId={post.post_id} audience={post.visibility}
+          name={workoutDetails?.exercises.find(ex => /outdoor/i.test(ex.exercise_name ?? ""))?.exercise_name ?? "Outdoor workout"}
+          mixed={post.workout_snapshot?.workout_kind === "mixed" || (workoutDetails?.exercises.length ?? 0) > 1}
+          fallback={<WorkoutDetails loading={loadingWorkoutDetails} data={workoutDetails} />} />
       );
     }
 

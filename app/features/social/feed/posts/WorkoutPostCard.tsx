@@ -7,6 +7,7 @@ import type { FeedRow } from "../types";
 import { UserMetaRow } from "../components/UserMetaRow";
 import { FeedActionsRow } from "../components/FeedActionsRow";
 import { workoutSummary } from "../utils/workoutSummary";
+import { PostMap, usePostRoutes } from "@/features/cardio/PostRoute";
 import { WorkoutCover } from "@/ui/media/WorkoutCover";
 
 type Props = {
@@ -149,7 +150,10 @@ export function WorkoutPostCard({
 
   const ws = item.workout_snapshot;
 
-  const stats = workoutSummary(ws);
+  const { routes } = usePostRoutes(ws?.workout_kind === "strength" ? null : item.post_id);
+  const route = routes[0];
+  const stats = workoutSummary(route && ws && ws.workout_kind !== "mixed" && ws.sets_count === 1
+    ? { ...ws, workout_kind: "cardio", total_distance_km: route.meters / 1000, cardio_duration_seconds: route.active } : ws);
 
   const workoutTitle = upperOrFallback(ws?.workout_title, "WORKOUT");
 
@@ -171,7 +175,7 @@ export function WorkoutPostCard({
       <View style={styles.workoutWrap}>
         {/* BANNER */}
         <View style={styles.bannerWrap}>
-          <WorkoutCover
+          {route?.drawing?.length ? <>\n            <PostMap route={route} preview />\n            <Text style={[styles.statLabel, { marginTop: 6 }]}>{ws?.workout_title || "Outdoor workout"}</Text>\n          </> : <WorkoutCover
             imageKey={imageKey}
             title={workoutTitle}
             variant="banner"
@@ -179,7 +183,7 @@ export function WorkoutPostCard({
             focusY={0.42}
             zoom={1.05}
             radius={layout.radius.lg}
-          />
+          />}
         </View>
 
         {/* STATS */}

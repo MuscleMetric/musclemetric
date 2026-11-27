@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { ScrollView, View, RefreshControl } from "react-native";
+import { ScrollView, View, Platform, RefreshControl } from "react-native";
 import { router } from "expo-router";
 import { Screen } from "@/ui";
 
@@ -12,6 +12,7 @@ import ProgressErrorState from "../components/ProgressErrorState";
 import MomentumHeroSection from "../sections/MomentumHeroSection";
 import ConsistencySection from "../sections/ConsistencySection";
 import StrengthHighlightsSection from "../sections/StrengthHighlightsSection";
+import RunningHighlightsSection from "../sections/RunningHighlightsSection";
 import ExerciseSummarySection from "../sections/ExerciseSummarySection";
 import RecentActivitySection from "../sections/RecentActivitySection";
 
@@ -62,6 +63,7 @@ export default function ProgressScreen() {
                   completed={workoutsTotal}
                   target={UNLOCK_TARGET}
                 />
+                {Platform.OS === "ios" && <RunningHighlightsSection />}
 
                 <RecentActivitySection
                   recent={vm.recent}
@@ -84,6 +86,7 @@ export default function ProgressScreen() {
                   highlights={vm.highlights}
                   onOpenExercise={handleOpenDeepAnalytics}
                 />
+                {Platform.OS === "ios" && <RunningHighlightsSection />}
 
                 <ExerciseSummarySection
                   exerciseSummary={vm.exerciseSummary}

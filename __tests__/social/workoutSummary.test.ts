@@ -7,17 +7,17 @@ const base: WorkoutSnapshot = {
 };
 test('cardio shows distance and logged interval time instead of kilograms', () => {
   expect(workoutSummary({...base,workout_kind:'cardio',total_distance_km:'5.25',cardio_duration_seconds:'1500'})).toEqual([
-    {label:'DISTANCE',value:'5.25',unit:'km'}, {label:'TIME',value:'25:00'}, {label:'EXERCISES',value:'1'},
+    {label:'TIME',value:'25:00'}, {label:'DISTANCE',value:'5.25',unit:'km'}, {label:'PACE',value:'4:46',unit:'/km'},
   ]);
 });
 test('time-only cardio has no invented distance and falls back to elapsed duration', () => {
-  expect(workoutSummary({...base,workout_kind:'cardio',total_distance_km:null,cardio_duration_seconds:null}).slice(0,2)).toEqual([
-    {label:'DISTANCE',value:'—',unit:'km'}, {label:'TIME',value:'30:00'},
+  expect(workoutSummary({...base,workout_kind:'cardio',total_distance_km:null,cardio_duration_seconds:null})).toEqual([
+    {label:'TIME',value:'30:00'}, {label:'DISTANCE',value:'—',unit:'km'}, {label:'PACE',value:'—'},
   ]);
 });
 test('formats long workouts and missing time', () => {
-  expect(workoutSummary({...base,workout_kind:'cardio',cardio_duration_seconds:3661})[1].value).toBe('1:01:01');
-  expect(workoutSummary({...base,workout_kind:'cardio',duration_seconds:null})[1].value).toBe('—');
+  expect(workoutSummary({...base,workout_kind:'cardio',cardio_duration_seconds:3661})[0].value).toBe('1:01:01');
+  expect(workoutSummary({...base,workout_kind:'cardio',duration_seconds:null})[0].value).toBe('—');
 });
 test('strength and older backend snapshots retain volume, sets and exercise count', () => {
   expect(workoutSummary({...base,total_volume:8500}).map(x=>x.label)).toEqual(['VOLUME','SETS','EXERCISES']);
@@ -29,6 +29,6 @@ test('mixed sessions retain lifting volume and add cardio distance and time', ()
 });
 test('malformed numeric values never render NaN', () => {
   expect(workoutSummary({...base,workout_kind:'cardio',total_distance_km:'invalid',cardio_duration_seconds:'invalid',duration_seconds:null})).toEqual([
-    {label:'DISTANCE',value:'—',unit:'km'}, {label:'TIME',value:'—'}, {label:'EXERCISES',value:'1'},
+    {label:'TIME',value:'—'}, {label:'DISTANCE',value:'—',unit:'km'}, {label:'PACE',value:'—'},
   ]);
 });
