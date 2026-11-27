@@ -11,14 +11,14 @@ import { listRuns } from "./runStore";
 import { restoreHistoryRun } from "./restoreRun";
 import { routeExpired, type Run } from "./runMetrics";
 
-type Props = { name?: string; slot?: string; historyId: string; completedAt: string; recorded: boolean; distance?: number | null; duration?: number | null };
+type Props = { fallback?: React.ReactNode; name?: string; slot?: string; historyId: string; completedAt: string; recorded: boolean; distance?: number | null; duration?: number | null };
 
 export function RunHistoryDetail(props: Props) {
   const { session } = useAuth();
-  return session ? <PrivateDetail key={session.user.id + props.historyId} owner={session.user.id} {...props} /> : null;
+  return session ? <PrivateDetail key={session.user.id + props.historyId} owner={session.user.id} {...props} /> : <>{props.fallback}</>;
 }
 
-function PrivateDetail({ owner, name = "Outdoor Run", slot, historyId, completedAt, recorded, distance, duration }: Props & { owner: string }) {
+function PrivateDetail({ owner, fallback, name = "Outdoor Run", slot, historyId, completedAt, recorded, distance, duration }: Props & { owner: string }) {
   const { colors } = useAppTheme();
   const [run, setRun] = useState<Run | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -46,7 +46,7 @@ function PrivateDetail({ owner, name = "Outdoor Run", slot, historyId, completed
     }).catch(() => { if (active) setStatus("error"); });
     return () => { active = false; };
   }, [owner, historyId, slot, recorded, completedAt, attempt]);
-  if (!recorded && !run) return null;
+  if (!recorded && !run) return <>{fallback}</>;
 
   if (run) return <>
     <GpsWorkoutDetail run={run} name={name} />

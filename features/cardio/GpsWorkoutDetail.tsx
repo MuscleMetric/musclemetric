@@ -2,7 +2,7 @@ import React from "react";
 import { Text, View } from "react-native";
 import { useAppTheme } from "@/lib/useAppTheme";
 import { Card } from "@/ui";
-import { HistorySectionHeader } from "@/app/features/history/ui/HistorySectionHeader";
+import { WorkoutDetailCard } from "./WorkoutDetailCard";
 import { RUN_TYPE_LABELS } from "@/app/features/cardio/tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
 import { meters, routeExpired, splits, type Run } from "./runMetrics";
@@ -27,16 +27,9 @@ export function GpsWorkoutDetail({ run, name = run.workoutSet?.name ?? "Outdoor 
   const heading = { color: colors.text, fontFamily: typography.fontFamily.bold, fontSize: 16 };
   const label = { color: colors.textMuted, fontSize: 13 };
   return <View style={{ gap: 12 }}>
-    <Card style={card}>
-      <HistorySectionHeader title={run.type ? RUN_TYPE_LABELS[run.type] + " · " + name : name}
-        subtitle={new Date(run.end ?? run.start).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })} />
-      <View style={{ flexDirection: "row", flexWrap: "wrap", rowGap: 10 }}>
-        {metrics.map(([title, value]) => <View key={title} style={{ width: "50%" }}>
-          <Text style={label}>{title}</Text>
-          <Text style={heading}>{value}</Text>
-        </View>)}
-      </View>
-    </Card>
+    <WorkoutDetailCard title={run.type ? RUN_TYPE_LABELS[run.type] + " · " + name : name}
+      subtitle={new Date(run.end ?? run.start).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" })}
+      metrics={metrics} />
     {expired ? <Text style={label}>The 90-day route and split history has expired.</Text> : <>
       {run.points.length > 1 && <Card style={card}>
         <Text style={heading}>Route</Text>

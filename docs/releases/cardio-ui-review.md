@@ -10,10 +10,10 @@ Start on the Progress tab of the iPhone cardio build. Review one item at a time.
 - [ ] **4. Trend chart.** Switch between distance, active time and average pace. Read the numbers and units on the vertical axis. Today belongs on the right. Faster pace, longer duration and greater distance should each plot higher. Check chart height and label readability on the phone.
 - [ ] **5. Runs beneath the graph.** Check that all runs matching the filter appear newest first, with five rows visible when available. Scroll to an older run and open its workout. Tap its chart point and confirm it opens the same workout.
 - [ ] **6. Home distance trend and exercise Deep Analytics.** Compare the distance and pace shown for the same activity and date range. Check that manual and GPS history count once and that Home refreshes after a save.
-- [ ] **7. Workout History.** Open the 2.24 km Easy walk from Running progress and from Workout History. Both should open Workout details. Drag on the map to scroll the page, then use Back to return to the originating list. Find 27:22 active, 40:09 elapsed and 12:12/km average. Check the map, the two full-kilometre splits and the final 0.24 km. Review the summary-only view for an expired route when a fixture is available.
+- [ ] **7. Workout History.** Open the 2.24 km Easy walk from Running progress and from Workout History. Both should open Workout details. Pinch in to inspect the route, then pinch out repeatedly. The widest view should match the opening frame. Check that the page scrolls past the map and Back returns to the originating list. Find 27:22 active, 40:09 elapsed and 12:12/km average. Check the map, the two full-kilometre splits and the final 0.24 km. Review the summary-only view for an expired route when a fixture is available.
 - [ ] **8. Starting an outdoor exercise.** Use a planned workout or Quick Start. Find Outdoor Run, read what Start does, and open the recorder. Review the permission prompt, the poor-signal state and the manual logging fallback.
 - [ ] **9. Finishing and saving.** Pause, choose the run type, optionally enter effort and return to the workout. Check the measured set, workout review and saved confirmation. A mixed session should keep its lifting sets and produce one workout history entry.
-- [ ] **10. Manual and treadmill runs.** Enter minutes, seconds, distance and run type. Check that a treadmill workout appears under the right filter and that its stats and record source are clear.
+- [ ] **10. Manual and treadmill runs.** Enter minutes, seconds, distance and run type. Open the 6.15 km treadmill workout and a manually logged outdoor activity. Check the Workout details header, logged time, distance and average pace. Check a multi-set session against its individual sets and a time-only entry for missing distance. In a mixed session, check both the cardio details and the lifting sets.
 
 ## On a short outdoor test with the Release build
 
@@ -23,4 +23,4 @@ Start on the Progress tab of the iPhone cardio build. Review one item at a time.
 
 ## Review notes
 
-First item awaiting feedback: **1. Running highlights**. Record feedback by item number so a revision can be picked up on the same screen.
+Next device checks are **7. Workout History** and **10. Manual and treadmill runs**. Harry approved the opening map scale. Pinch behaviour and the revised detail screens are awaiting device review.

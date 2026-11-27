@@ -23,7 +23,8 @@ import {
 
 import { routeSlot } from "@/features/cardio/workoutOutdoor";
 import { RunHistoryDetail } from "@/features/cardio/RunHistoryDetail";
-import { HistorySectionHeader } from "../ui/HistorySectionHeader";
+import { WorkoutDetailCard } from "@/features/cardio/WorkoutDetailCard";
+import { LoggedCardioDetail } from "@/features/cardio/LoggedCardioDetail";
 import { PRBadge } from "../ui/PRBadge";
 import { WorkoutHistoryExerciseRow } from "../ui/WorkoutHistoryExerciseRow";
 
@@ -141,19 +142,6 @@ function fmtKg(x?: number | null) {
   return `${Math.round(x)}`;
 }
 
-function fmtDuration(sec?: number | null) {
-  if (sec == null || !isFinite(sec)) return "—";
-
-  const total = Math.max(0, Math.round(sec));
-  const mins = Math.floor(total / 60);
-  const secs = total % 60;
-
-  if (mins <= 0) return `${secs}s`;
-  if (secs === 0) return `${mins} mins`;
-
-  return `${mins}m ${secs}s`;
-}
-
 function fmtClock(sec?: number | null) {
   if (sec == null || !isFinite(sec)) return "—";
 
@@ -196,33 +184,10 @@ function hasTimeOrDistance(st: {
   return st.time_seconds != null || st.distance != null;
 }
 
-function fmtSetSummary(st: {
+function fmtStrengthSet(st: {
   reps?: number | null;
   weight_kg?: number | null;
-  time_seconds?: number | null;
-  distance?: number | null;
 }) {
-  if (hasTimeOrDistance(st)) {
-    const parts = [
-      st.time_seconds != null ? fmtDuration(st.time_seconds) : null,
-      fmtDistance(st.distance),
-    ].filter(Boolean);
-
-    if (st.time_seconds != null && st.distance != null && st.distance > 0) {
-      parts.push(fmtPace(st.time_seconds / st.distance));
-    }
-
-    if (st.weight_kg != null) {
-      parts.push(`${st.weight_kg} kg`);
-    }
-
-    if (st.reps != null) {
-      parts.push(`${st.reps} reps`);
-    }
-
-    return parts.length ? parts.join(" • ") : "—";
-  }
-
   if (st.weight_kg != null && st.reps != null) {
     return `${st.weight_kg} kg × ${st.reps}`;
   }
@@ -429,7 +394,7 @@ export default function WorkoutHistoryDetailScreen({
   return (
     <Screen>
       <ScreenHeader
-        title={exercises.some(ex => /\boutdoor\b/i.test(ex.exercise_name)) ? "Workout details" : "Workout"}
+        title="Workout details"
         right={
           <Pressable
             onPress={() => {
@@ -471,95 +436,17 @@ export default function WorkoutHistoryDetailScreen({
           />
         }
       >
-        {!standaloneGps && <>
-        <HistorySectionHeader
-          title={header.title}
-          subtitle={fmtDayTime(header.completed_at)}
-          right={
-            <View
-              style={{
-                paddingHorizontal: 10,
-                paddingVertical: 6,
-                borderRadius: 999,
-                borderWidth: 1,
-                borderColor: colors.border,
-                backgroundColor: colors.surface,
-              }}
-            >
-              <Text style={{ color: colors.text, fontSize: 12 }}>
-                {fmtMins(stats?.duration_seconds)}
-              </Text>
-            </View>
-          }
-        />
+        {!standaloneGps && <WorkoutDetailCard title={header.title} subtitle={fmtDayTime(header.completed_at)}
+          metrics={[
+            ["Workout duration", fmtClock(stats?.duration_seconds)],
+            ...(stats?.sets_count != null ? [["Sets", n0(stats.sets_count)]] : []),
+            ...(hasVolume ? [["Volume", fmtKg(stats?.volume_kg) + " kg"]] : []),
+            ...(hasDistance ? [["Distance", fmtDistance(stats?.distance_total) ?? "—"]] : []),
+            ["Personal records", n0(totalPrs)],
+          ]}>
+          {insight?.label && <Text style={{ color: colors.textMuted }}>{insight.label}</Text>}
+        </WorkoutDetailCard>}
 
-        {insight?.label ? (
-          <Text style={{ color: colors.textMuted, marginTop: -6 }}>
-            {insight.label}
-          </Text>
-        ) : null}
-
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          {hasVolume ? (
-            <Card style={{ flex: 1, padding: 12, borderRadius: 18 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                VOLUME
-              </Text>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontFamily: typography.fontFamily.bold,
-                  fontSize: 20,
-                  marginTop: 6,
-                }}
-              >
-                {fmtKg(stats?.volume_kg)} kg
-              </Text>
-            </Card>
-          ) : null}
-
-          {hasDistance ? (
-            <Card style={{ flex: 1, padding: 12, borderRadius: 18 }}>
-              <Text style={{ color: colors.textMuted, fontSize: 12 }}>
-                DISTANCE
-              </Text>
-              <Text
-                style={{
-                  color: colors.text,
-                  fontFamily: typography.fontFamily.bold,
-                  fontSize: 20,
-                  marginTop: 6,
-                }}
-              >
-                {fmtDistance(stats?.distance_total)}
-              </Text>
-            </Card>
-          ) : null}
-
-          <Card style={{ flex: 1, padding: 12, borderRadius: 18 }}>
-            <Text style={{ color: colors.textMuted, fontSize: 12 }}>PRS</Text>
-            <Text
-              style={{
-                color: colors.success,
-                fontFamily: typography.fontFamily.bold,
-                fontSize: 20,
-                marginTop: 6,
-              }}
-            >
-              {n0(totalPrs)}
-            </Text>
-          </Card>
-        </View>
-
-        </>}
-
-        {Platform.OS === "ios" && exercises.filter(ex => /\boutdoor\b/i.test(ex.exercise_name)).flatMap(ex =>
-          (ex.sets ?? []).map(set => {
-            const slot = routeSlot(ex.exercise_id, ex.order_index ?? 0, set.set_number);
-            return <RunHistoryDetail key={slot} name={ex.exercise_name} slot={slot}
-              historyId={header.workout_history_id} completedAt={header.completed_at}
-              recorded={legacyOutdoorRun && set.set_number === 1} distance={set.distance} duration={set.time_seconds} />;
-          }))}
         {header.notes && !standaloneGps ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
             <Text
@@ -577,83 +464,81 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         ) : null}
 
-        {!standaloneGps && <Card style={{ padding: 12, borderRadius: 18 }}>
-          <Text
-            style={{
-              color: colors.text,
-              fontFamily: typography.fontFamily.bold,
-              fontSize: 14,
-            }}
-          >
-            Exercises
-          </Text>
-          <Text style={{ color: colors.textMuted, marginTop: 6 }}>
-            PR pills only show when you broke your previous best.
-          </Text>
+        {exercises.map((ex) => {
+          const sets = ex.sets ?? [];
+          const key = ex.exercise_id + ":" + (ex.order_index ?? 0);
+          const singleSet = sets.length === 1 ? sets[0] : null;
+          const badge = ex.is_pr ? <PRBadge /> : undefined;
+          if (Platform.OS === "ios" && /\boutdoor\b/i.test(ex.exercise_name) && sets.length) {
+            return sets.map(set => {
+              const slot = routeSlot(ex.exercise_id, ex.order_index ?? 0, set.set_number);
+              const title = singleSet ? ex.exercise_name : ex.exercise_name + " · Set " + set.set_number;
+              return <RunHistoryDetail key={set.set_id ?? slot} name={title} slot={slot}
+                historyId={header.workout_history_id} completedAt={header.completed_at}
+                recorded={legacyOutdoorRun && set.set_number === 1} distance={set.distance} duration={set.time_seconds}
+                fallback={<LoggedCardioDetail title={title} sets={[set]} right={badge} />} />;
+            });
+          }
+          if (sets.some(hasTimeOrDistance)) {
+            return <LoggedCardioDetail key={key} title={ex.exercise_name} sets={sets} right={badge} />;
+          }
 
-          <View style={{ marginTop: 12, gap: 14 }}>
-            {exercises.map((ex) => {
-              const sets = ex.sets ?? [];
-              const singleSet = sets.length === 1 ? sets[0] : null;
+          return (
+            <Card key={key} style={{ padding: 14, borderRadius: 18 }}>
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 10,
+                }}
+              >
+                <Text
+                  numberOfLines={2}
+                  style={{
+                    flex: 1,
+                    color: colors.text,
+                    fontFamily: typography.fontFamily.bold,
+                    fontSize: 16,
+                  }}
+                >
+                  {ex.exercise_name}
+                </Text>
 
-              return (
-                <View key={ex.exercise_id}>
-                  <View
+                {singleSet ? (
+                  <Text
+                    numberOfLines={2}
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 10,
+                      color: colors.textMuted,
+                      fontSize: 14,
+                      textAlign: "right",
+                      maxWidth: "55%",
                     }}
                   >
-                    <Text
-                      numberOfLines={2}
-                      style={{
-                        flex: 1,
-                        color: colors.text,
-                        fontFamily: typography.fontFamily.bold,
-                        fontSize: 16,
-                      }}
-                    >
-                      {ex.exercise_name}
-                    </Text>
+                    {fmtStrengthSet(singleSet)}
+                  </Text>
+                ) : null}
 
-                    {singleSet ? (
-                      <Text
-                        numberOfLines={2}
-                        style={{
-                          color: colors.textMuted,
-                          fontSize: 14,
-                          textAlign: "right",
-                          maxWidth: "55%",
-                        }}
-                      >
-                        {fmtSetSummary(singleSet)}
-                      </Text>
-                    ) : null}
+                {ex.is_pr ? <PRBadge /> : null}
+              </View>
 
-                    {ex.is_pr ? <PRBadge /> : null}
-                  </View>
-
-                  {!singleSet && sets.length ? (
-                    <View style={{ marginTop: 10, gap: 8 }}>
-                      {sets.map((st) => (
-                        <WorkoutHistoryExerciseRow
-                          key={`${ex.exercise_id}-${st.set_number}-${
-                            st.set_id ?? "x"
-                          }`}
-                          name={`Set ${st.set_number}`}
-                          summary={fmtSetSummary(st)}
-                          isPr={!!st.is_pr}
-                          isBest={!!st.is_best}
-                        />
-                      ))}
-                    </View>
-                  ) : null}
+              {!singleSet && sets.length ? (
+                <View style={{ marginTop: 10, gap: 8 }}>
+                  {sets.map((st) => (
+                    <WorkoutHistoryExerciseRow
+                      key={`${ex.exercise_id}-${st.set_number}-${
+                        st.set_id ?? "x"
+                      }`}
+                      name={`Set ${st.set_number}`}
+                      summary={fmtStrengthSet(st)}
+                      isPr={!!st.is_pr}
+                      isBest={!!st.is_best}
+                    />
+                  ))}
                 </View>
-              );
-            })}
-          </View>
-        </Card>}
+              ) : null}
+            </Card>
+          );
+        })}
 
         {cardioPrsCount > 0 ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
