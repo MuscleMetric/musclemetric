@@ -60,7 +60,7 @@ export default function RunningHighlightsSection() {
       </Pressable>
     </View>
     {loading ? <Text style={{ color: colors.textMuted }}>Loading running records…</Text> : null}
-    {error ? <Text style={{ color: colors.textMuted }}>Could not load running records. Open Running progress to retry.</Text> : null}
+    {error ? <Text style={{ color: colors.textMuted }}>Could not load running records. Tap View all to open your runs.</Text> : null}
     {!loading && !error && <ScrollView horizontal showsHorizontalScrollIndicator={false}
       contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
       {highlights.map(({ distance, best }) =>
@@ -77,9 +77,9 @@ export default function RunningHighlightsSection() {
             {best ? new Date(best.run.start).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
               : "No completed result"}
           </Text>
-          <Text style={{ color: colors.textMuted, fontSize: 11 }}>
-            {best ? (best.run.sourceLabel === "logged" ? "Logged result" : "GPS result") + " · Running progress ›" : "Running progress ›"}
-          </Text>
+          {best && <Text style={{ color: colors.textMuted, fontSize: 11 }}>
+            {best.run.sourceLabel === "logged" ? "Logged result" : "GPS result"}
+          </Text>}
         </Pressable>)}
     </ScrollView>}
   </ProgressSection>;

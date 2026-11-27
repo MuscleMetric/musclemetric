@@ -18,6 +18,7 @@ jest.mock("@/ui", () => {
 jest.mock("@/features/cardio/recorder", () => ({ finishRecorder: jest.fn(), RunActionError: class extends Error {} }));
 jest.mock("@/features/cardio/runStore", () => ({ listRuns: jest.fn(), subscribeRuns: () => () => {} }));
 jest.mock("@/features/cardio/syncRun", () => ({ backupRoute: jest.fn() }));
+jest.mock("@/features/cardio/analyticsData", () => ({ loadAnalyticsRuns: async () => [] }));
 jest.mock("@/features/cardio/restoreRun", () => ({ restoreHistoryRun: jest.fn() }));
 jest.mock("@/features/cardio/RouteMap", () => () => null);
 
