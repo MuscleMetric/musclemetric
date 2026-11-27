@@ -7,20 +7,20 @@ import { AuthRequiredState, Button, Screen, ScreenHeader } from "@/ui";
 import { RUN_TYPES, RUN_TYPE_LABELS, type RunType } from "./tracking/types";
 import { cardioPace, cardioTime } from "@/app/features/progress/deep-analytics/utils/cardioFormat";
 import { finishRecorder, pauseRecorder, RunActionError, startRecorder } from "@/features/cardio/recorder";
-import { activeMs, routeExpired, legs, meters, personalBestsForRun, splits, type Run } from "@/features/cardio/runMetrics";
+import { activeMs, routeExpired, meters, personalBestsForRun, type Run } from "@/features/cardio/runMetrics";
 import { discardDraft, listRuns, subscribeRuns } from "@/features/cardio/runStore";
 import { backupRoute, saveRunHistory } from "@/features/cardio/syncRun";
 import { restoreHistoryRun } from "@/features/cardio/restoreRun";
-import RouteMap from "@/features/cardio/RouteMap";
+import { GpsWorkoutDetail } from "@/features/cardio/GpsWorkoutDetail";
 import { RunInsights } from "@/features/cardio/RunInsights";
 
 export default function OutdoorRun() {
   const { session } = useAuth();
-  const { historyId, view } = useLocalSearchParams<{ historyId?: string; view?: string }>();
-  return session ? <Recorder key={[session.user.id, historyId, view].join("/")} owner={session.user.id} historyId={historyId} progress={view === "progress"} /> : <AuthRequiredState />;
+  const { historyId, view, recordingId } = useLocalSearchParams<{ historyId?: string; view?: string; recordingId?: string }>();
+  return session ? <Recorder key={[session.user.id, historyId, view, recordingId].join("/")} owner={session.user.id} historyId={historyId} recordingId={recordingId} progress={view === "progress"} /> : <AuthRequiredState />;
 }
 
-function Recorder({ owner, historyId, progress }: { owner: string; historyId?: string; progress: boolean }) {
+function Recorder({ owner, historyId, recordingId, progress }: { owner: string; historyId?: string; recordingId?: string; progress: boolean }) {
   const { colors } = useAppTheme();
   const [runs, setRuns] = useState<Run[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -33,7 +33,6 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const [type, setType] = useState<RunType | null>(null);
   const [effort, setEffort] = useState<number | null>(null);
   const [revision, setRevision] = useState(0);
-  const scroll = useRef<ScrollView>(null);
 
   useEffect(() => {
     let alive = true, sequence = 0, ready = false;
@@ -67,10 +66,10 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
     return () => { alive = false; unsubscribe(); };
   }, [owner, historyId, revision]);
 
-  const selectedRun = runs.find(r => r.id === selected);
+  const selectedRun = runs.find(r => r.id === (recordingId ?? selected));
   const draft = runs.find(r => r.end === null);
   const run = historyId ? runs.find(r => r.historyId === historyId) ?? remote :
-    selectedRun ?? (progress ? null : draft);
+    selectedRun ?? (progress || recordingId ? null : draft);
   const highlights = useMemo(() => run?.end != null && runs.some(r => r.id === run.id)
     ? personalBestsForRun(run, runs) : [], [run, runs]);
   const running = !!run && run.activeSince !== null;
@@ -89,14 +88,13 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
     finally { lock.current = false; setBusy(false); }
   };
   const show = useCallback((id: string, savedHistoryId?: string | null) => {
-    if (!runs.some(item => item.id === id) && savedHistoryId) {
+    if (savedHistoryId) {
+      const local = runs.find(item => item.id === id && item.historyId === savedHistoryId);
       router.push({ pathname: "/features/progress/screens/historyDetail",
-        params: { workoutHistoryId: savedHistoryId } });
-      return;
+        params: { workoutHistoryId: savedHistoryId, ...(local ? { recordingId: local.id } : {}) } });
+    } else {
+      router.push({ pathname: "/features/cardio/outdoor-run", params: { recordingId: id } });
     }
-    setSelected(id);
-    setMessage("");
-    scroll.current?.scrollTo({ y: 0, animated: true });
   }, [runs]);
   const style = { color: colors.text };
   const muted = { color: colors.textMuted };
@@ -104,11 +102,11 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
   const elapsed = run ? activeMs(run, now) / 1000 : 0;
   const km = run ? meters(run) / 1000 : 0;
   const last = run ? run.points[run.points.length - 1] : undefined;
-  const canStart = loaded && !draft && !historyId && !progress && !run;
+  const canStart = loaded && !draft && !historyId && !recordingId && !progress && !run;
   const saveHistory = (r: Run) => void action(() => r.autoBackup ? backupRoute(owner, r.id) : saveRunHistory(owner, r.id), "Saved on this iPhone. Reconnect and retry workout history.");
   return <Screen>
-    <ScreenHeader title={progress ? "Running progress" : "Outdoor Run"} />
-    <ScrollView ref={scroll} contentContainerStyle={{ padding: 18, gap: 14, paddingBottom: 60 }}>
+    <ScreenHeader title={done || recordingId || historyId ? "Workout details" : progress ? "Running progress" : "Outdoor Run"} />
+    <ScrollView contentContainerStyle={{ padding: 18, gap: 14, paddingBottom: 60 }}>
       {message ? <Text accessibilityRole="alert" style={style}>{message}</Text> : null}
       {!loaded && <Text style={muted}>{message ? "Run data unavailable" : "Opening your runs…"}</Text>}
       {(!loaded || (historyId && !run)) && !!message && <Button title="Retry" onPress={() => { setMessage(""); setRevision(n => n + 1); }} />}
@@ -119,14 +117,15 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           setType(null); setEffort(null); await startRecorder(owner);
         }, "Could not start GPS. Check location settings and retry.")} />
       </>}
-      {run && <>
-        <Text style={{ ...style, fontSize: 22, fontWeight: "600" }}>{done ? (run.type === "long_run" ? "Long run" : run.type ? RUN_TYPE_LABELS[run.type] + " run" : "Completed run") : running ? "Recording" : "Paused"}</Text>
+      {loaded && recordingId && !run && <Text style={muted}>This recording is unavailable on this iPhone.</Text>}
+      {run && !done && <>
+        <Text style={{ ...style, fontSize: 22, fontWeight: "600" }}>{running ? "Recording" : "Paused"}</Text>
         <Text style={{ ...style, fontSize: 32, fontWeight: "700" }}>{km.toFixed(2)} km</Text>
         <Text style={style}>Active time {cardioTime(elapsed) === "—" ? "0:00" : cardioTime(elapsed)} · Pace {cardioPace(km ? elapsed / km : null)}</Text>
         {running && <Text style={muted}>{!last || last.leg !== run.leg || now - last.time > 30000 ? "Waiting for a reliable GPS fix. Check Precise Location and move into open sky." : "GPS signal received"}</Text>}
         {run.rejected > 0 && <Text style={muted}>{run.rejected} unreliable GPS samples excluded.</Text>}
         {running && <Button title="Pause or finish" disabled={busy} onPress={() => void action(() => pauseRecorder(owner, run.id), "Could not pause GPS. Check the recording status.")} />}
-        {!running && !done && <>
+        {!running && <>
           <Button title="Resume" disabled={busy} onPress={() => void action(() => startRecorder(owner, run.id), "Could not resume GPS. Check location settings.")} />
           <Text style={style}>Run type · required to finish</Text>
           <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
@@ -139,7 +138,7 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
           </View>
           <Button title="Finish and save run" disabled={busy || !type || km <= 0} onPress={() => type && void action(async () => {
             await finishRecorder(owner, run.id, type, effort);
-            show(run.id);
+            setSelected(run.id);
             if (run.autoBackup) await backupRoute(owner, run.id);
             else await saveRunHistory(owner, run.id);
           }, "Run saved on this iPhone. Reconnect to sync.")} />
@@ -147,23 +146,21 @@ function Recorder({ owner, historyId, progress }: { owner: string; historyId?: s
             { text: "Keep run", style: "cancel" }, { text: "Discard", style: "destructive", onPress: () => void action(() => discardDraft(owner, run.id), "Could not discard this draft.") },
           ])} />
         </>}
-        {done && <>
-          <Text style={muted}>{new Date(run.start).toLocaleString()} · Elapsed {cardioTime(((run.end ?? run.start) - run.start) / 1000)}{run.effort ? " · RPE " + run.effort + "/10" : ""}</Text>
-          <Text style={style}>{run.historyId ? "Saved to workout history" : "Saved on this iPhone · workout history pending"}</Text>
-          {!run.historyId && <Button title="Retry workout history" disabled={busy} onPress={() => saveHistory(run)} />}
-          {highlights.map(pb => <Text key={pb.distance} style={{ color: colors.success, fontWeight: "600" }}>
-            GPS best on this iPhone · {pb.distance / 1000} km in {cardioTime(pb.time)}
-          </Text>)}
-          <RouteMap key={run.id} points={run.points} />
-          {legs(run.points).length > 1 && <Text style={muted}>The route has separate sections where tracking paused or GPS signal was lost.</Text>}
-          <Text style={{ ...style, fontWeight: "600" }}>GPS splits · active pace</Text>
-          {splits(run).map((s, i) => <Text key={i} style={style}>{s.partial ? "Final " + (s.distance / 1000).toFixed(2) + " km" : "Kilometre " + (i + 1)} · {cardioTime(s.seconds)} · {cardioPace(s.seconds / (s.distance / 1000))}</Text>)}
-          {routeExpired(run.start) ? <Text style={muted}>GPS detail expired after 90 days. Your workout totals are saved.</Text> : run.routeSynced ? <Text style={muted}>Private route backed up</Text> : <Button variant="outline" title={run.autoBackup ? "Retry private route sync" : "Back up private route"} disabled={busy} onPress={() => void action(() => backupRoute(owner, run.id), "Private backup is unavailable. The complete route and splits are saved on this iPhone.")} />}
-          {!historyId && <Button title={progress ? "Back to runs" : "Return to recorder"} variant="secondary" onPress={() => { setSelected(null); setMessage(""); }} />}
-        </>}
+      </>}
+      {run && done && <>
+        <GpsWorkoutDetail run={run} />
+        {highlights.map(pb => <Text key={pb.distance} style={{ color: colors.success, fontWeight: "600" }}>
+          GPS best on this iPhone · {pb.distance / 1000} km in {cardioTime(pb.time)}
+        </Text>)}
+        {!run.historyId && <Button title="Retry workout history" disabled={busy} onPress={() => saveHistory(run)} />}
+        {run.historyId && !routeExpired(run.start) && !run.routeSynced &&
+          <Button variant="outline" title={run.autoBackup ? "Retry route sync" : "Back up route"} disabled={busy}
+            onPress={() => void action(() => backupRoute(owner, run.id), "Route sync failed. Reconnect and retry.")} />}
+        {!historyId && !recordingId && <Button title="Return to recorder" variant="secondary"
+          onPress={() => { setSelected(null); setMessage(""); }} />}
       </>}
       {!!message && !done && <Button title="Open iPhone settings" variant="text" onPress={() => { void Linking.openSettings(); }} />}
-      {loaded && !historyId && !run && (!draft || progress) && <RunInsights runs={runs} owner={owner} open={show} />}
+      {loaded && !historyId && !recordingId && !run && (!draft || progress) && <RunInsights runs={runs} owner={owner} open={show} />}
     </ScrollView>
   </Screen>;
 }

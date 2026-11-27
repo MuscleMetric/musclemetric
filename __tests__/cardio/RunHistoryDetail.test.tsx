@@ -6,9 +6,10 @@ import { restoreHistoryRun } from "@/features/cardio/restoreRun";
 import type { Run } from "@/features/cardio/runMetrics";
 
 jest.mock("@/lib/authContext", () => ({ useAuth: () => ({ session: { user: { id: "owner" } } }) }));
-jest.mock("@/lib/useAppTheme", () => ({ useAppTheme: () => ({ colors: {} }) }));
+jest.mock("@/lib/useAppTheme", () => ({ useAppTheme: () => ({ colors: {}, typography: { fontFamily: { bold: "System" } } }) }));
 jest.mock("@/ui", () => ({ Card: jest.requireActual("react-native").View }));
 jest.mock("@/features/cardio/RouteMap", () => () => null);
+jest.mock("@/features/cardio/syncRun", () => ({ backupRoute: jest.fn() }));
 jest.mock("@/features/cardio/runStore", () => ({ listRuns: jest.fn() }));
 jest.mock("@/features/cardio/restoreRun", () => ({ restoreHistoryRun: jest.fn() }));
 
@@ -25,7 +26,8 @@ test("history restores measured splits and compares full kilometres only", async
   jest.mocked(listRuns).mockResolvedValue([]);
   jest.mocked(restoreHistoryRun).mockResolvedValue(run);
   const screen = render(<RunHistoryDetail historyId="history" completedAt={new Date(start).toISOString()} recorded />);
-  await screen.findByText("Kilometre 2 was your fastest full kilometre at 5:10.");
+  await screen.findByText("Kilometre 2 · Fastest");
+  expect(screen.getAllByText("5:10")).toHaveLength(1);
   expect(screen.getByText("Final 0.10 km")).toBeTruthy();
   expect(restoreHistoryRun).toHaveBeenCalledWith("owner", "history");
 });
@@ -34,7 +36,8 @@ test("expired history displays the retained distance and pace without splits", a
   const old = { ...run, start: start - 91 * 86400000, points: [], summaryMeters: 2100 };
   jest.mocked(listRuns).mockResolvedValue([old]);
   const screen = render(<RunHistoryDetail historyId="history" completedAt={new Date(old.start).toISOString()} recorded />);
-  await screen.findByText(/2.10 km · 11:40 active/);
+  await screen.findByText("2.10 km");
+  expect(screen.getByText("11:40")).toBeTruthy();
   expect(screen.getByText(/90-day route/)).toBeTruthy();
   expect(screen.queryByText("Kilometre splits")).toBeNull();
 });

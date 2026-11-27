@@ -8,12 +8,13 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAppTheme } from "@/lib/useAppTheme";
 import {
   Screen,
   ScreenHeader,
+  Button,
   Card,
   LoadingScreen,
   ErrorState,
@@ -275,7 +276,7 @@ export default function WorkoutHistoryDetailScreen({
   workoutHistoryId?: string;
 } = {}) {
   const { colors, typography, layout } = useAppTheme();
-  const params = useLocalSearchParams<{ workoutHistoryId?: string }>();
+  const params = useLocalSearchParams<{ workoutHistoryId?: string; recordingId?: string }>();
 
   const workoutHistoryId = useMemo(
     () => (workoutHistoryIdProp ?? params.workoutHistoryId ?? "").toString(),
@@ -407,15 +408,28 @@ export default function WorkoutHistoryDetailScreen({
   ]);
 
   if (loading) return <LoadingScreen />;
+  if (err && params.recordingId) return <Screen>
+    <ScreenHeader title="Workout details" />
+    <ErrorState title="Workout history unavailable" message="You can still view the GPS recording saved on this iPhone." onRetry={() => load("initial")} />
+    <Button title="Open saved recording" onPress={() => router.replace({ pathname: "/features/cardio/outdoor-run",
+        params: { recordingId: params.recordingId } })} />
+  </Screen>;
   if (err) return <ErrorState title="Workout detail failed" message={err} />;
   if (!header) {
     return <ErrorState title="No session" message="Try another workout." />;
   }
 
+  const legacyOutdoorRun = exercises.length === 1 && exercises[0].exercise_name === "Outdoor Run" &&
+    !!header.notes?.includes("outdoor run");
+  const standaloneGps = Platform.OS === "ios" && legacyOutdoorRun &&
+    /^(Easy|Tempo|Intervals|Long Run|Race) outdoor run(?: · RPE (?:10|[1-9])\/10)?$/.test(header.notes ?? "") &&
+    exercises[0].sets?.length === 1 &&
+    exercises[0].sets[0].set_number === 1;
+
   return (
     <Screen>
       <ScreenHeader
-        title="Workout"
+        title={exercises.some(ex => /\boutdoor\b/i.test(ex.exercise_name)) ? "Workout details" : "Workout"}
         right={
           <Pressable
             onPress={() => {
@@ -457,6 +471,7 @@ export default function WorkoutHistoryDetailScreen({
           />
         }
       >
+        {!standaloneGps && <>
         <HistorySectionHeader
           title={header.title}
           subtitle={fmtDayTime(header.completed_at)}
@@ -536,15 +551,16 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         </View>
 
+        </>}
+
         {Platform.OS === "ios" && exercises.filter(ex => /\boutdoor\b/i.test(ex.exercise_name)).flatMap(ex =>
           (ex.sets ?? []).map(set => {
-            const legacy = !!header.notes?.includes("outdoor run") && exercises.length === 1 && ex.exercise_name === "Outdoor Run" && set.set_number === 1;
             const slot = routeSlot(ex.exercise_id, ex.order_index ?? 0, set.set_number);
             return <RunHistoryDetail key={slot} name={ex.exercise_name} slot={slot}
               historyId={header.workout_history_id} completedAt={header.completed_at}
-              recorded={legacy} distance={set.distance} duration={set.time_seconds} />;
+              recorded={legacyOutdoorRun && set.set_number === 1} distance={set.distance} duration={set.time_seconds} />;
           }))}
-        {header.notes ? (
+        {header.notes && !standaloneGps ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
             <Text
               style={{
@@ -561,7 +577,7 @@ export default function WorkoutHistoryDetailScreen({
           </Card>
         ) : null}
 
-        <Card style={{ padding: 12, borderRadius: 18 }}>
+        {!standaloneGps && <Card style={{ padding: 12, borderRadius: 18 }}>
           <Text
             style={{
               color: colors.text,
@@ -637,7 +653,7 @@ export default function WorkoutHistoryDetailScreen({
               );
             })}
           </View>
-        </Card>
+        </Card>}
 
         {cardioPrsCount > 0 ? (
           <Card style={{ padding: 12, borderRadius: 18 }}>
